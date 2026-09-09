@@ -1,0 +1,136 @@
+"""Pack yaşam döngüsü: oluşturma, açma, kaydetme, mod ekleme/çıkarma,
+bağımlılık çözümleme (proje-amacı.md §2.2, Akış A/B).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from mcpack.models import Loader, ModEntry, ModEnv, ModHashes, Pack
+from mcpack.packs import storage
+from mcpack.sources.base import ModDetail, ModSource, ModVersion
+
+
+def _version_to_entry(version: ModVersion, detail: ModDetail | None) -> ModEntry:
+    file = version.primary_file
+    if file is None:
+        raise ValueError(f"{version.name}: indirilebilir dosya bulunamadı")
+
+    env = ModEnv()
+    if detail is not None:
+        env = ModEnv(client=detail.client_side, server=detail.server_side)
+
+    return ModEntry(
+        source=version.source,
+        project_id=version.project_id,
+        slug=detail.slug if detail is not None else None,
+        version_id=version.version_id,
+        file_name=file.file_name,
+        file_size=file.size,
+        hashes=ModHashes(sha1=file.sha1, sha512=file.sha512),
+        download_url=file.url,
+        env=env,
+        dependencies=[
+            d.project_id for d in version.dependencies
+            if d.dependency_type == "required" and d.project_id
+        ],
+    )
+
+
+class PackManager:
+    def __init__(self, packs_dir: Path) -> None:
+        self.packs_dir = packs_dir
+
+    def create_pack(
+        self,
+        *,
+        name: str,
+        minecraft: str,
+        loader: Loader,
+        loader_version: str,
+        author: str = "",
+        summary: str = "",
+    ) -> Pack:
+        pack = Pack(
+            name=name,
+            minecraft=minecraft,
+            loader=loader,
+            loader_version=loader_version,
+            author=author,
+            summary=summary,
+        )
+        storage.save_pack(pack, self.packs_dir)
+        return pack
+
+    def list_packs(self) -> list[Pack]:
+        packs = []
+        for path in storage.list_pack_files(self.packs_dir):
+            try:
+                packs.append(storage.load_pack(path))
+            except ValueError:
+                continue  # bozuk/eksik JSON, listelemeyi durdurmasın
+        return packs
+
+    def load(self, pack_id: str) -> Pack:
+        return storage.load_pack(storage.pack_file_path(self.packs_dir, pack_id))
+
+    def save(self, pack: Pack) -> None:
+        pack.touch()
+        storage.save_pack(pack, self.packs_dir)
+
+    def delete(self, pack_id: str) -> None:
+        storage.delete_pack(pack_id, self.packs_dir)
+
+    def add_mod(self, pack: Pack, version: ModVersion, detail: ModDetail | None = None) -> ModEntry:
+        entry = _version_to_entry(version, detail)
+        existing = pack.find_mod(entry.project_id)
+        if existing:
+            pack.mods.remove(existing)
+        pack.mods.append(entry)
+        self.save(pack)
+        return entry
+
+    def remove_mod(self, pack: Pack, project_id: str) -> None:
+        pack.mods = [m for m in pack.mods if m.project_id != project_id]
+        self.save(pack)
+
+    async def resolve_dependencies(
+        self,
+        pack: Pack,
+        source: ModSource,
+        version: ModVersion,
+    ) -> list[ModVersion]:
+        """Bir versiyonun required bağımlılıklarını, pack'te henüz olmayanlar
+        için yinelemeli olarak Modrinth/CurseForge'tan çeker.
+
+        Döngüsel bağımlılıklara karşı ziyaret edilen project_id'leri takip eder.
+        """
+        resolved: list[ModVersion] = []
+        visited: set[str] = {version.project_id, *(m.project_id for m in pack.mods)}
+        queue = [
+            d.project_id
+            for d in version.dependencies
+            if d.dependency_type == "required" and d.project_id
+        ]
+
+        while queue:
+            project_id = queue.pop(0)
+            if project_id in visited:
+                continue
+            visited.add(project_id)
+
+            versions = await source.get_versions(
+                project_id, game_version=pack.minecraft, loader=pack.loader
+            )
+            if not versions:
+                continue
+            dep_version = versions[0]
+            resolved.append(dep_version)
+
+            queue.extend(
+                d.project_id
+                for d in dep_version.dependencies
+                if d.dependency_type == "required" and d.project_id and d.project_id not in visited
+            )
+
+        return resolved

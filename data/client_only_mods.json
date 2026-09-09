@@ -1,0 +1,30 @@
+{
+  "_not": "Bu liste sadece CurseForge gibi resmi client/server env bilgisi vermeyen kaynaklar için YEDEK (fallback) sezgiseldir. Modrinth modları için önce API'nin client_side/server_side alanına bakılır (bkz. sources/modrinth.py); bu liste sadece o bilgi yoksa devreye girer.",
+  "client_only_slugs": [
+    "sodium",
+    "iris",
+    "modmenu",
+    "rei",
+    "jei",
+    "just-enough-items",
+    "lambdynamiclights",
+    "entityculling",
+    "better-f3",
+    "continuity",
+    "indium",
+    "xaeros-minimap",
+    "xaeros-world-map",
+    "not-enough-animations",
+    "3d-skin-layers",
+    "capes",
+    "controlling",
+    "mouse-tweaks",
+    "inventory-hud-forge",
+    "reeses-sodium-options",
+    "sodium-extra",
+    "cull-leaves",
+    "particular",
+    "shaderpacks",
+    "resourcepack-explorer"
+  ]
+}

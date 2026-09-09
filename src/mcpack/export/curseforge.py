@@ -38,15 +38,15 @@ _LOADER_ID_PREFIX = {
 
 def build_manifest(pack: Pack) -> dict:
     cf_mods = [m for m in pack.mods if m.source == ModSourceType.CURSEFORGE]
+    mod_loaders = (
+        []
+        if pack.loader == Loader.VANILLA
+        else [{"id": f"{_LOADER_ID_PREFIX[pack.loader]}-{pack.loader_version}", "primary": True}]
+    )
     return {
         "minecraft": {
             "version": pack.minecraft,
-            "modLoaders": [
-                {
-                    "id": f"{_LOADER_ID_PREFIX[pack.loader]}-{pack.loader_version}",
-                    "primary": True,
-                }
-            ],
+            "modLoaders": mod_loaders,
         },
         "manifestType": "minecraftModpack",
         "manifestVersion": 1,

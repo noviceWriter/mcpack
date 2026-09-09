@@ -36,25 +36,26 @@ _LOADER_COMPONENT = {
 
 
 def build_mmc_pack(pack: Pack) -> dict:
-    loader_uid, loader_name = _LOADER_COMPONENT[pack.loader]
-    return {
-        "components": [
-            {
-                "cachedName": "Minecraft",
-                "cachedVersion": pack.minecraft,
-                "important": True,
-                "uid": "net.minecraft",
-                "version": pack.minecraft,
-            },
+    components = [
+        {
+            "cachedName": "Minecraft",
+            "cachedVersion": pack.minecraft,
+            "important": True,
+            "uid": "net.minecraft",
+            "version": pack.minecraft,
+        }
+    ]
+    if pack.loader != Loader.VANILLA:
+        loader_uid, loader_name = _LOADER_COMPONENT[pack.loader]
+        components.append(
             {
                 "cachedName": loader_name,
                 "cachedVersion": pack.loader_version,
                 "uid": loader_uid,
                 "version": pack.loader_version,
-            },
-        ],
-        "formatVersion": 1,
-    }
+            }
+        )
+    return {"components": components, "formatVersion": 1}
 
 
 def build_instance_cfg(pack: Pack) -> str:

@@ -47,6 +47,10 @@ def _mod_file_entry(entry: ModEntry) -> dict:
 
 
 def build_index(pack: Pack) -> dict:
+    dependencies = {"minecraft": pack.minecraft}
+    if pack.loader != Loader.VANILLA:
+        dependencies[_LOADER_DEPENDENCY_KEY[pack.loader]] = pack.loader_version
+
     return {
         "formatVersion": 1,
         "game": "minecraft",
@@ -54,10 +58,7 @@ def build_index(pack: Pack) -> dict:
         "name": pack.name,
         "summary": pack.summary,
         "files": [_mod_file_entry(m) for m in pack.mods],
-        "dependencies": {
-            "minecraft": pack.minecraft,
-            _LOADER_DEPENDENCY_KEY[pack.loader]: pack.loader_version,
-        },
+        "dependencies": dependencies,
     }
 
 

@@ -38,12 +38,17 @@ def _manager(settings: Settings) -> PackManager:
 
 
 async def cmd_create(args: argparse.Namespace, settings: Settings) -> None:
+    loader = Loader(args.loader)
+    if loader != Loader.VANILLA and not args.loader_version:
+        print(f"--loader-version gerekli (loader={loader.value} vanilla değil)", file=sys.stderr)
+        return
+
     manager = _manager(settings)
     pack = manager.create_pack(
         name=args.name,
         minecraft=args.minecraft,
-        loader=Loader(args.loader),
-        loader_version=args.loader_version,
+        loader=loader,
+        loader_version=args.loader_version or "",
         author=args.author or "",
         summary=args.summary or "",
     )
@@ -163,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--name", required=True)
     p.add_argument("--minecraft", required=True)
     p.add_argument("--loader", required=True, choices=[l.value for l in Loader])
-    p.add_argument("--loader-version", required=True)
+    p.add_argument("--loader-version", help="Loader='vanilla' ise gerekmez")
     p.add_argument("--author")
     p.add_argument("--summary")
     p.set_defaults(func=cmd_create)

@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 
 
 class Loader(StrEnum):
+    VANILLA = "vanilla"
+    """Mod loader yok — sadece vanilla Minecraft (+ opsiyonel resourcepack/datapack)."""
     FABRIC = "fabric"
     QUILT = "quilt"
     FORGE = "forge"
@@ -85,7 +87,8 @@ class Pack(BaseModel):
     summary: str = ""
     minecraft: str
     loader: Loader
-    loader_version: str
+    loader_version: str = ""
+    """Loader.VANILLA için boş bırakılır."""
     mods: list[ModEntry] = Field(default_factory=list)
     overrides: Overrides = Field(default_factory=Overrides)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

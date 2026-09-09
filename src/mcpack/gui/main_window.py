@@ -19,10 +19,11 @@ from PySide6.QtWidgets import (
 from mcpack.config import Settings
 from mcpack.downloader import make_client
 from mcpack.export import CurseForgeExporter, MrpackExporter, PrismExporter, ServerPackExporter
+from mcpack.gui.new_pack_dialog import NewPackDialog
 from mcpack.gui.settings_dialog import SettingsDialog
 from mcpack.gui.widgets import ExportPanel, PackDetailPanel, PackListPanel, SearchPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
-from mcpack.models import EnvRequirement, Loader, ModSourceType, Pack
+from mcpack.models import EnvRequirement, ModSourceType, Pack
 from mcpack.packs import PackManager
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
 from mcpack.sources.base import SearchResult
@@ -98,23 +99,17 @@ class MainWindow(QMainWindow):
         self.pack_list.set_packs(self.manager.list_packs())
 
     def create_pack_dialog(self) -> None:
-        name, ok = QInputDialog.getText(self, "Yeni Pack", "İsim:")
-        if not ok or not name:
+        dialog = NewPackDialog(self)
+        if dialog.exec() != NewPackDialog.DialogCode.Accepted:
             return
-        minecraft, ok = QInputDialog.getText(self, "Yeni Pack", "Minecraft versiyonu (örn. 1.21.1):")
-        if not ok or not minecraft:
-            return
-        loader_name, ok = QInputDialog.getItem(
-            self, "Yeni Pack", "Loader:", [l.value for l in Loader], editable=False
-        )
-        if not ok:
-            return
-        loader_version, ok = QInputDialog.getText(self, "Yeni Pack", "Loader versiyonu:")
-        if not ok or not loader_version:
-            return
-
+        values = dialog.result_values()
         self.manager.create_pack(
-            name=name, minecraft=minecraft, loader=Loader(loader_name), loader_version=loader_version
+            name=values["name"],
+            minecraft=values["minecraft"],
+            loader=values["loader"],
+            loader_version=values["loader_version"],
+            author=values["author"],
+            summary=values["summary"],
         )
         self.reload_packs()
 

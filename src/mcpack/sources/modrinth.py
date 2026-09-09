@@ -73,7 +73,7 @@ class ModrinthClient(ModSource):
         facets: list[list[str]] = [["project_type:mod"]]
         if game_version:
             facets.append([f"versions:{game_version}"])
-        if loader:
+        if loader and loader != Loader.VANILLA:
             facets.append([f"categories:{loader.value}"])
 
         params = {
@@ -122,7 +122,7 @@ class ModrinthClient(ModSource):
         params: dict[str, str] = {}
         if game_version:
             params["game_versions"] = json.dumps([game_version])
-        if loader:
+        if loader and loader != Loader.VANILLA:
             params["loaders"] = json.dumps([loader.value])
 
         response = await self._get(f"/project/{project_id}/version", params=params)

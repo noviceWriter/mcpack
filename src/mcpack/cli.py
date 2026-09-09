@@ -21,7 +21,7 @@ from pathlib import Path
 from mcpack.config import Settings
 from mcpack.downloader import make_client
 from mcpack.export import CurseForgeExporter, MrpackExporter, PrismExporter, ServerPackExporter
-from mcpack.models import Loader, ModSourceType
+from mcpack.models import EnvRequirement, Loader, ModSourceType
 from mcpack.packs import PackManager
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
 
@@ -124,6 +124,18 @@ async def cmd_add_mod(args: argparse.Namespace, settings: Settings) -> None:
         await source.aclose()
 
 
+async def cmd_set_env(args: argparse.Namespace, settings: Settings) -> None:
+    manager = _manager(settings)
+    pack = manager.load(args.pack_id)
+    entry = manager.set_mod_env(
+        pack,
+        args.project_id,
+        client=EnvRequirement(args.client) if args.client else None,
+        server=EnvRequirement(args.server) if args.server else None,
+    )
+    print(f"{entry.file_name}: client={entry.env.client.value}  server={entry.env.server.value}")
+
+
 async def cmd_export(args: argparse.Namespace, settings: Settings) -> None:
     manager = _manager(settings)
     pack = manager.load(args.pack_id)
@@ -176,6 +188,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("project_id")
     p.add_argument("--source", choices=[s.value for s in ModSourceType], default="modrinth")
     p.set_defaults(func=cmd_add_mod)
+
+    p = sub.add_parser(
+        "set-env", help="Bir modun client/server durumunu elle düzelt (CF modları için gerekebilir)"
+    )
+    p.add_argument("pack_id")
+    p.add_argument("project_id")
+    p.add_argument("--client", choices=[e.value for e in EnvRequirement])
+    p.add_argument("--server", choices=[e.value for e in EnvRequirement])
+    p.set_defaults(func=cmd_set_env)
 
     p = sub.add_parser("export", help="Pack'i dışa aktar")
     p.add_argument("pack_id")

@@ -20,7 +20,7 @@ from mcpack.downloader import make_client
 from mcpack.export import CurseForgeExporter, MrpackExporter, PrismExporter, ServerPackExporter
 from mcpack.gui.widgets import ExportPanel, PackDetailPanel, PackListPanel, SearchPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
-from mcpack.models import Loader, ModSourceType, Pack
+from mcpack.models import EnvRequirement, Loader, ModSourceType, Pack
 from mcpack.packs import PackManager
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
 from mcpack.sources.base import SearchResult
@@ -73,6 +73,7 @@ class MainWindow(QMainWindow):
         self.pack_list.new_pack_requested.connect(self.create_pack_dialog)
         self.pack_list.pack_selected.connect(self.select_pack)
         self.pack_detail.remove_mod_requested.connect(self.remove_mod)
+        self.pack_detail.edit_env_requested.connect(self.edit_mod_env)
         self.search_panel.search_requested.connect(self.do_search)
         self.search_panel.add_mod_requested.connect(self.add_mod)
         self.export_panel.export_requested.connect(self.do_export)
@@ -134,6 +135,35 @@ class MainWindow(QMainWindow):
             return
         self.manager.remove_mod(self.current_pack, project_id)
         self.pack_detail.show_pack(self.current_pack)
+
+    def edit_mod_env(self, project_id: str) -> None:
+        """CurseForge gibi kaynaklar client/server bilgisini güvenilir vermeyebilir;
+        kullanıcı burada elle düzeltir (proje-amacı.md §6)."""
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+        entry = pack.find_mod(project_id)
+        if entry is None:
+            return
+
+        env_values = [e.value for e in EnvRequirement]
+        client, ok = QInputDialog.getItem(
+            self, "Client Durumu", entry.file_name, env_values,
+            current=env_values.index(entry.env.client.value), editable=False,
+        )
+        if not ok:
+            return
+        server, ok = QInputDialog.getItem(
+            self, "Server Durumu", entry.file_name, env_values,
+            current=env_values.index(entry.env.server.value), editable=False,
+        )
+        if not ok:
+            return
+
+        self.manager.set_mod_env(
+            pack, project_id, client=EnvRequirement(client), server=EnvRequirement(server)
+        )
+        self.pack_detail.show_pack(pack)
 
     # -- mod arama / ekleme --------------------------------------------------
 

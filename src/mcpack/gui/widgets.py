@@ -124,6 +124,9 @@ class PackListPanel(QWidget):
 
 class PackDetailPanel(QWidget):
     remove_mod_requested = Signal(str)
+    edit_env_requested = Signal(str)
+    """CurseForge gibi kaynaklarda client/server bilgisi güvenilir olmayabilir;
+    kullanıcı bu sinyalle seçili modun env'ini elle düzeltebilir (proje-amacı.md §6)."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -138,9 +141,15 @@ class PackDetailPanel(QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
 
+        button_row = QHBoxLayout()
         remove_button = QPushButton("Seçili Modu Çıkar")
         remove_button.clicked.connect(self._on_remove_clicked)
-        layout.addWidget(remove_button)
+        button_row.addWidget(remove_button)
+
+        env_button = QPushButton("Client/Server Düzelt")
+        env_button.clicked.connect(self._on_edit_env_clicked)
+        button_row.addWidget(env_button)
+        layout.addLayout(button_row)
 
     def show_pack(self, pack: Pack | None) -> None:
         if pack is None:
@@ -166,6 +175,14 @@ class PackDetailPanel(QWidget):
         item = self.table.item(row, 0)
         if item is not None:
             self.remove_mod_requested.emit(item.data(Qt.ItemDataRole.UserRole))
+
+    def _on_edit_env_clicked(self) -> None:
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        item = self.table.item(row, 0)
+        if item is not None:
+            self.edit_env_requested.emit(item.data(Qt.ItemDataRole.UserRole))
 
 
 # ---------------------------------------------------------------------------

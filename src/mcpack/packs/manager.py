@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mcpack.models import Loader, ModEntry, ModEnv, ModHashes, Pack
+from mcpack.models import EnvRequirement, Loader, ModEntry, ModEnv, ModHashes, Pack
 from mcpack.packs import storage
 from mcpack.sources.base import ModDetail, ModSource, ModVersion
 
@@ -93,6 +93,30 @@ class PackManager:
     def remove_mod(self, pack: Pack, project_id: str) -> None:
         pack.mods = [m for m in pack.mods if m.project_id != project_id]
         self.save(pack)
+
+    def set_mod_env(
+        self,
+        pack: Pack,
+        project_id: str,
+        *,
+        client: EnvRequirement | None = None,
+        server: EnvRequirement | None = None,
+    ) -> ModEntry:
+        """Bir modun client/server durumunu elle düzeltir.
+
+        proje-amacı.md §6: "Client/Server ayrımında emin olunamayan modlar
+        için kullanıcıya seçenek sun" — CurseForge gibi bu bilgiyi
+        vermeyen kaynaklardan gelen modlarda kullanıcı burada düzeltir.
+        """
+        entry = pack.find_mod(project_id)
+        if entry is None:
+            raise ValueError(f"Pack'te bulunamadı: {project_id}")
+        if client is not None:
+            entry.env.client = client
+        if server is not None:
+            entry.env.server = server
+        self.save(pack)
+        return entry
 
     async def resolve_dependencies(
         self,

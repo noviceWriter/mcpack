@@ -12,9 +12,13 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
+    QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -27,6 +31,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mcpack.gui.icon_loader import load_icon
+from mcpack.gui.theme import env_color, loader_color, source_color
 from mcpack.models import ModSourceType, Pack
 from mcpack.sources.base import SearchResult
 
@@ -80,8 +86,98 @@ def run_async(
 
 
 # ---------------------------------------------------------------------------
-# Sol panel: pack listesi
+# Ortak yardımcılar
 # ---------------------------------------------------------------------------
+
+
+def _panel_group(title: str) -> tuple[QGroupBox, QVBoxLayout]:
+    """Her paneli çerçeveli/başlıklı bir kutuya alır — düz üst üste widget
+    yığını yerine gerçek bir uygulama görünümü verir."""
+    box = QGroupBox(title)
+    layout = QVBoxLayout(box)
+    layout.setSpacing(8)
+    return box, layout
+
+
+def format_downloads(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return str(n)
+
+
+_ENV_LABELS = {"required": "Gerekli", "optional": "Opsiyonel", "unsupported": "Yok"}
+_SOURCE_LABELS = {"modrinth": "Modrinth", "curseforge": "CurseForge"}
+
+
+def _colored_item(text: str, color_hex: str, *, background: bool = False) -> QTableWidgetItem:
+    item = QTableWidgetItem(text)
+    if background:
+        item.setBackground(QColor(color_hex))
+        item.setForeground(QColor("#f0f0f0"))
+    else:
+        item.setForeground(QColor(color_hex))
+    return item
+
+
+def _badge_label(text: str, color_hex: str, *, size: int = 36) -> QLabel:
+    """Prism/CurseForge tarzı köşeli renkli rozet — gerçek bir ikon yerine
+    (network'ten çekilemeyen pack'ler için) loader/harf bazlı görsel kimlik."""
+    badge = QLabel(text)
+    badge.setFixedSize(size, size)
+    badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setStyleSheet(
+        f"background-color: {color_hex}; color: #10110f; font-weight: 700; "
+        f"border-radius: 8px; font-size: {max(11, size // 3)}px;"
+    )
+    return badge
+
+
+def _icon_label(size: int = 40) -> QLabel:
+    """Uzak sunucudan async yüklenecek bir mod ikonu için placeholder etiket."""
+    label = QLabel()
+    label.setFixedSize(size, size)
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    label.setStyleSheet("background-color: #2b2d31; border-radius: 8px;")
+    return label
+
+
+def _set_scaled_pixmap(label: QLabel, pixmap: QPixmap) -> None:
+    size = label.width()
+    scaled = pixmap.scaled(
+        size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+    )
+    label.setPixmap(scaled)
+
+
+# ---------------------------------------------------------------------------
+# Sol panel: pack listesi (CurseForge/Prism'deki "instance kartı" ilhamı)
+# ---------------------------------------------------------------------------
+
+
+class _PackCard(QWidget):
+    def __init__(self, pack: Pack) -> None:
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(10)
+
+        loader_label = "Vanilla" if pack.loader.value == "vanilla" else pack.loader.value.capitalize()
+        badge = _badge_label(loader_label[0], loader_color(pack.loader.value))
+        layout.addWidget(badge)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        name_label = QLabel(pack.name)
+        name_label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        text_col.addWidget(name_label)
+
+        subtitle = QLabel(f"{loader_label} · MC {pack.minecraft} · {len(pack.mods)} mod")
+        subtitle.setProperty("role", "muted")
+        text_col.addWidget(subtitle)
+
+        layout.addLayout(text_col, 1)
 
 
 class PackListPanel(QWidget):
@@ -92,16 +188,19 @@ class PackListPanel(QWidget):
         super().__init__()
         self._packs: list[Pack] = []
 
-        layout = QVBoxLayout(self)
-        heading = QLabel("Pack'ler")
-        heading.setProperty("role", "heading")
-        layout.addWidget(heading)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        group, layout = _panel_group("Pack'ler")
+        outer.addWidget(group)
 
         self.list_widget = QListWidget()
+        self.list_widget.setAlternatingRowColors(True)
+        self.list_widget.setSpacing(2)
         self.list_widget.currentRowChanged.connect(self._on_row_changed)
         layout.addWidget(self.list_widget)
 
         new_button = QPushButton("+ Yeni Pack")
+        new_button.setObjectName("primary")
         new_button.clicked.connect(self.new_pack_requested.emit)
         layout.addWidget(new_button)
 
@@ -109,8 +208,11 @@ class PackListPanel(QWidget):
         self._packs = packs
         self.list_widget.clear()
         for pack in packs:
-            item = QListWidgetItem(f"{pack.name}  ({pack.loader.value} {pack.minecraft})")
+            item = QListWidgetItem()
+            card = _PackCard(pack)
+            item.setSizeHint(card.sizeHint())
             self.list_widget.addItem(item)
+            self.list_widget.setItemWidget(item, card)
 
     def _on_row_changed(self, row: int) -> None:
         if 0 <= row < len(self._packs):
@@ -130,19 +232,27 @@ class PackDetailPanel(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        group, layout = _panel_group("Pack Detayı")
+        outer.addWidget(group)
 
-        self.heading = QLabel("Pack seçilmedi")
-        self.heading.setProperty("role", "heading")
-        layout.addWidget(self.heading)
+        self.summary_label = QLabel("Pack seçilmedi")
+        self.summary_label.setProperty("role", "muted")
+        layout.addWidget(self.summary_label)
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Mod", "Kaynak", "Client", "Server"])
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
 
         button_row = QHBoxLayout()
         remove_button = QPushButton("Seçili Modu Çıkar")
+        remove_button.setObjectName("danger")
         remove_button.clicked.connect(self._on_remove_clicked)
         button_row.addWidget(remove_button)
 
@@ -153,20 +263,33 @@ class PackDetailPanel(QWidget):
 
     def show_pack(self, pack: Pack | None) -> None:
         if pack is None:
-            self.heading.setText("Pack seçilmedi")
+            self.summary_label.setText("Pack seçilmedi")
             self.table.setRowCount(0)
             return
 
-        self.heading.setText(
-            f"{pack.name} — {pack.loader.value} {pack.loader_version} / MC {pack.minecraft}  ({len(pack.mods)} mod)"
+        loader_label = "Vanilla" if pack.loader.value == "vanilla" else pack.loader.value.capitalize()
+        loader_version = f" {pack.loader_version}" if pack.loader_version else ""
+        self.summary_label.setText(
+            f"{pack.name}  ·  {loader_label}{loader_version}  ·  MC {pack.minecraft}  ·  {len(pack.mods)} mod"
         )
         self.table.setRowCount(len(pack.mods))
         for row, mod in enumerate(pack.mods):
-            self.table.setItem(row, 0, QTableWidgetItem(mod.file_name))
-            self.table.setItem(row, 1, QTableWidgetItem(mod.source.value))
-            self.table.setItem(row, 2, QTableWidgetItem(mod.env.client.value))
-            self.table.setItem(row, 3, QTableWidgetItem(mod.env.server.value))
-            self.table.item(row, 0).setData(Qt.ItemDataRole.UserRole, mod.project_id)
+            name_item = QTableWidgetItem(mod.file_name)
+            name_item.setData(Qt.ItemDataRole.UserRole, mod.project_id)
+            self.table.setItem(row, 0, name_item)
+
+            source_label = _SOURCE_LABELS.get(mod.source.value, mod.source.value)
+            self.table.setItem(row, 1, _colored_item(source_label, source_color(mod.source.value)))
+
+            client_label = _ENV_LABELS.get(mod.env.client.value, mod.env.client.value)
+            self.table.setItem(
+                row, 2, _colored_item(client_label, env_color(mod.env.client.value), background=True)
+            )
+
+            server_label = _ENV_LABELS.get(mod.env.server.value, mod.env.server.value)
+            self.table.setItem(
+                row, 3, _colored_item(server_label, env_color(mod.env.server.value), background=True)
+            )
 
     def _on_remove_clicked(self) -> None:
         row = self.table.currentRow()
@@ -186,8 +309,53 @@ class PackDetailPanel(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# Sağ üst panel: mod arama
+# Sağ üst panel: mod arama (CurseForge/Modrinth uygulamalarındaki "mod kartı"
+# görünümü ilham alındı: ikon + başlık + açıklama + kaynak rozeti + indirme)
 # ---------------------------------------------------------------------------
+
+
+class _ModResultCard(QWidget):
+    def __init__(self, result: SearchResult) -> None:
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(10)
+
+        self.icon_label = _icon_label(40)
+        layout.addWidget(self.icon_label)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        title = QLabel(result.title)
+        title.setStyleSheet("font-weight: 600; font-size: 13px;")
+        title_row.addWidget(title)
+
+        source_badge = QLabel(_SOURCE_LABELS.get(result.source.value, result.source.value))
+        source_badge.setStyleSheet(
+            f"color: {source_color(result.source.value)}; font-weight: 600; font-size: 11px;"
+        )
+        title_row.addWidget(source_badge)
+        title_row.addStretch()
+
+        downloads = QLabel(f"⬇ {format_downloads(result.downloads)}")
+        downloads.setProperty("role", "muted")
+        title_row.addWidget(downloads)
+        text_col.addLayout(title_row)
+
+        if result.description:
+            desc = QLabel(result.description)
+            desc.setProperty("role", "muted")
+            desc.setWordWrap(True)
+            desc.setMaximumHeight(32)
+            text_col.addWidget(desc)
+
+        layout.addLayout(text_col, 1)
+
+        if result.icon_url:
+            load_icon(result.icon_url, lambda pixmap: _set_scaled_pixmap(self.icon_label, pixmap))
 
 
 class SearchPanel(QWidget):
@@ -198,10 +366,10 @@ class SearchPanel(QWidget):
         super().__init__()
         self._results: list[SearchResult] = []
 
-        layout = QVBoxLayout(self)
-        heading = QLabel("Mod Ara")
-        heading.setProperty("role", "heading")
-        layout.addWidget(heading)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        group, layout = _panel_group("Mod Ara")
+        outer.addWidget(group)
 
         row = QHBoxLayout()
         self.query_input = QLineEdit()
@@ -212,15 +380,18 @@ class SearchPanel(QWidget):
         self.source_combo = QComboBox()
         self.source_combo.addItem("Tümü (Modrinth + CurseForge)", "both")
         for s in ModSourceType:
-            self.source_combo.addItem(s.value, s.value)
+            self.source_combo.addItem(_SOURCE_LABELS.get(s.value, s.value), s.value)
         row.addWidget(self.source_combo)
 
         search_button = QPushButton("Ara")
+        search_button.setObjectName("primary")
         search_button.clicked.connect(self._on_search_clicked)
         row.addWidget(search_button)
         layout.addLayout(row)
 
         self.results_list = QListWidget()
+        self.results_list.setSpacing(2)
+        self.results_list.itemDoubleClicked.connect(self._on_add_clicked)
         layout.addWidget(self.results_list)
 
         add_button = QPushButton("Seçili Modu Pack'e Ekle")
@@ -236,7 +407,11 @@ class SearchPanel(QWidget):
         self._results = results
         self.results_list.clear()
         for r in results:
-            self.results_list.addItem(f"[{r.source.value}] {r.title}  ({r.downloads} indirme)")
+            item = QListWidgetItem()
+            card = _ModResultCard(r)
+            item.setSizeHint(card.sizeHint())
+            self.results_list.addItem(item)
+            self.results_list.setItemWidget(item, card)
 
     def _on_add_clicked(self) -> None:
         row = self.results_list.currentRow()
@@ -258,10 +433,10 @@ class ExportPanel(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        layout = QVBoxLayout(self)
-        heading = QLabel("Export / Aksiyonlar")
-        heading.setProperty("role", "heading")
-        layout.addWidget(heading)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        group, layout = _panel_group("Export / Aksiyonlar")
+        outer.addWidget(group)
 
         row = QHBoxLayout()
         self.format_combo = QComboBox()
@@ -271,6 +446,7 @@ class ExportPanel(QWidget):
         row.addWidget(self.format_combo)
 
         export_button = QPushButton("Export Et")
+        export_button.setObjectName("primary")
         export_button.clicked.connect(
             lambda: self.export_requested.emit(self.format_combo.currentData())
         )
@@ -287,15 +463,21 @@ class ExportPanel(QWidget):
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 1)
+        self.progress.setFixedHeight(20)
         layout.addWidget(self.progress)
 
         self.cancel_button = QPushButton("İptal")
+        self.cancel_button.setObjectName("danger")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel_requested.emit)
         layout.addWidget(self.cancel_button)
 
         self.status_label = QLabel("")
+        self.status_label.setProperty("role", "muted")
+        self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
+
+        layout.addStretch()
 
     def set_busy(self, busy: bool) -> None:
         self.cancel_button.setEnabled(busy)

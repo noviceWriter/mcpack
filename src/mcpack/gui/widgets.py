@@ -253,6 +253,8 @@ class ExportPanel(QWidget):
     export_requested = Signal(str)  # format key: mrpack/curseforge/prism
     server_pack_requested = Signal()
     run_sklauncher_requested = Signal()
+    cancel_requested = Signal()
+    """Büyük pack'lerde devam eden indirmeyi iptal etmek için (proje-amacı.md §6)."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -287,8 +289,16 @@ class ExportPanel(QWidget):
         self.progress.setRange(0, 1)
         layout.addWidget(self.progress)
 
+        self.cancel_button = QPushButton("İptal")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.cancel_requested.emit)
+        layout.addWidget(self.cancel_button)
+
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
+
+    def set_busy(self, busy: bool) -> None:
+        self.cancel_button.setEnabled(busy)
 
     def set_progress(self, done: int, total: int) -> None:
         self.progress.setRange(0, max(total, 1))

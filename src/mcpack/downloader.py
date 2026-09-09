@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,6 +22,10 @@ ProgressCallback = Callable[[int, int], None]
 
 class DownloadError(Exception):
     pass
+
+
+class DownloadCancelledError(DownloadError):
+    """Kullanıcı export/indirmeyi iptal ettiğinde fırlatılır (proje-amacı.md §6)."""
 
 
 class HashMismatchError(DownloadError):
@@ -92,20 +97,29 @@ async def download_file(
     sha512: str | None = None,
     progress_cb: ProgressCallback | None = None,
     max_retries: int = 3,
+    cancel_event: threading.Event | None = None,
 ) -> Path:
-    """Dosyayı indirir, hash doğrular. Uyuşmazsa dosyayı siler ve tekrar dener."""
+    """Dosyayı indirir, hash doğrular. Uyuşmazsa dosyayı siler ve tekrar dener.
+
+    cancel_event set edilmişse (kullanıcı export'u iptal ettiyse) indirme
+    chunk aralarında kontrol edilip DownloadCancelledError ile durdurulur.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     last_error: Exception | None = None
 
     for attempt in range(1, max_retries + 1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise DownloadCancelledError(f"{dest.name}: kullanıcı tarafından iptal edildi")
+        tmp_path = dest.with_suffix(dest.suffix + ".part")
         try:
             downloaded = 0
             async with client.stream("GET", url) as response:
                 response.raise_for_status()
                 total = int(response.headers.get("Content-Length", 0))
-                tmp_path = dest.with_suffix(dest.suffix + ".part")
                 with tmp_path.open("wb") as f:
                     async for chunk in response.aiter_bytes(64 * 1024):
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise DownloadCancelledError(f"{dest.name}: kullanıcı tarafından iptal edildi")
                         f.write(chunk)
                         downloaded += len(chunk)
                         if progress_cb:
@@ -114,6 +128,9 @@ async def download_file(
             if sha1 or sha512:
                 verify_hashes(dest, sha1=sha1, sha512=sha512)
             return dest
+        except DownloadCancelledError:
+            tmp_path.unlink(missing_ok=True)
+            raise
         except HashMismatchError as exc:
             dest.unlink(missing_ok=True)
             last_error = exc

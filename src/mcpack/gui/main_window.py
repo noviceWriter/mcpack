@@ -4,6 +4,7 @@ tüm backend katmanlarını (sources, packs, export, launcher) GUI'ye bağlar.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
 from mcpack.config import Settings
 from mcpack.downloader import make_client
 from mcpack.export import CurseForgeExporter, MrpackExporter, PrismExporter, ServerPackExporter
+from mcpack.gui.settings_dialog import SettingsDialog
 from mcpack.gui.widgets import ExportPanel, PackDetailPanel, PackListPanel, SearchPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
 from mcpack.models import EnvRequirement, Loader, ModSourceType, Pack
@@ -41,6 +43,7 @@ class MainWindow(QMainWindow):
         self.settings = Settings.load()
         self.manager = PackManager(self.settings.resolved_packs_dir())
         self.current_pack: Pack | None = None
+        self._cancel_event: threading.Event | None = None
 
         self.pack_list = PackListPanel()
         self.pack_detail = PackDetailPanel()
@@ -79,26 +82,15 @@ class MainWindow(QMainWindow):
         self.export_panel.export_requested.connect(self.do_export)
         self.export_panel.server_pack_requested.connect(self.do_server_pack)
         self.export_panel.run_sklauncher_requested.connect(self.do_run_sklauncher)
+        self.export_panel.cancel_requested.connect(self.cancel_current_task)
 
     # -- ayarlar -------------------------------------------------------------
 
     def open_settings_dialog(self) -> None:
-        key, ok = QInputDialog.getText(
-            self, "CurseForge API Key", "API Key:", text=self.settings.curseforge_api_key
-        )
-        if ok:
-            self.settings.curseforge_api_key = key
-
-        path, ok = QInputDialog.getText(
-            self,
-            "SKLauncher Yolu",
-            "Portable SKLauncher (.exe / AppImage / .jar) yolu:",
-            text=self.settings.sklauncher_path,
-        )
-        if ok:
-            self.settings.sklauncher_path = path
-
-        self.settings.save()
+        dialog = SettingsDialog(self.settings, self)
+        if dialog.exec() == SettingsDialog.DialogCode.Accepted:
+            dialog.apply_to(self.settings)
+            self.settings.save()
 
     # -- pack listesi / detay ------------------------------------------------
 
@@ -251,6 +243,23 @@ class MainWindow(QMainWindow):
         )
         return Path(chosen) if chosen else Path.cwd()
 
+    def _begin_cancellable_task(self) -> threading.Event:
+        """Büyük pack'lerde iptal desteği (proje-amacı.md §6): her export/
+        launcher görevi kendi cancel_event'iyle başlar, "İptal" butonu aktifleşir."""
+        event = threading.Event()
+        self._cancel_event = event
+        self.export_panel.set_busy(True)
+        return event
+
+    def _end_cancellable_task(self) -> None:
+        self._cancel_event = None
+        self.export_panel.set_busy(False)
+
+    def cancel_current_task(self) -> None:
+        if self._cancel_event is not None:
+            self._cancel_event.set()
+            self.export_panel.set_status("İptal ediliyor...")
+
     def do_export(self, format_key: str) -> None:
         if not self.current_pack:
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
@@ -264,6 +273,7 @@ class MainWindow(QMainWindow):
         if not output_path:
             return
         source_dir = self._pick_source_dir()
+        cancel_event = self._begin_cancellable_task()
 
         async def task() -> Path:
             async with make_client() as client:
@@ -273,15 +283,22 @@ class MainWindow(QMainWindow):
                     output_path=Path(output_path),
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
                     client=client,
+                    exclude_dirs=self.settings.excluded_override_dirs(),
                     progress_cb=self.export_panel.set_progress,
+                    cancel_event=cancel_event,
                 )
 
         self.export_panel.set_status("Export ediliyor...")
-        run_async(
-            task,
-            on_success=lambda p: self.export_panel.set_status(f"Tamamlandı: {p}"),
-            on_error=self._on_error,
-        )
+
+        def on_success(p: Path) -> None:
+            self._end_cancellable_task()
+            self.export_panel.set_status(f"Tamamlandı: {p}")
+
+        def on_error(message: str) -> None:
+            self._end_cancellable_task()
+            self._on_error(message)
+
+        run_async(task, on_success=on_success, on_error=on_error)
 
     def do_server_pack(self) -> None:
         if not self.current_pack:
@@ -293,6 +310,7 @@ class MainWindow(QMainWindow):
         if not output_path:
             return
         source_dir = self._pick_source_dir()
+        cancel_event = self._begin_cancellable_task()
 
         async def task() -> Path:
             async with make_client() as client:
@@ -302,15 +320,22 @@ class MainWindow(QMainWindow):
                     output_path=Path(output_path),
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
                     client=client,
+                    exclude_dirs=self.settings.excluded_override_dirs(),
                     progress_cb=self.export_panel.set_progress,
+                    cancel_event=cancel_event,
                 )
 
         self.export_panel.set_status("Server pack oluşturuluyor...")
-        run_async(
-            task,
-            on_success=lambda p: self.export_panel.set_status(f"Server pack hazır: {p}"),
-            on_error=self._on_error,
-        )
+
+        def on_success(p: Path) -> None:
+            self._end_cancellable_task()
+            self.export_panel.set_status(f"Server pack hazır: {p}")
+
+        def on_error(message: str) -> None:
+            self._end_cancellable_task()
+            self._on_error(message)
+
+        run_async(task, on_success=on_success, on_error=on_error)
 
     def do_run_sklauncher(self) -> None:
         if not self.current_pack:
@@ -321,6 +346,7 @@ class MainWindow(QMainWindow):
             return
         pack = self.current_pack
         source_dir = self._pick_source_dir()
+        cancel_event = self._begin_cancellable_task()
 
         async def task() -> Path:
             instances_dir = instances_dir_for(self.settings.sklauncher_path)
@@ -331,18 +357,25 @@ class MainWindow(QMainWindow):
                     instances_dir=instances_dir,
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
                     client=client,
+                    exclude_dirs=self.settings.excluded_override_dirs(),
                     progress_cb=self.export_panel.set_progress,
+                    cancel_event=cancel_event,
                 )
 
         def on_success(instance_dir: Path) -> None:
+            self._end_cancellable_task()
             self.export_panel.set_status(f"Instance hazır: {instance_dir} — SKLauncher başlatılıyor")
             try:
                 launch(self.settings.sklauncher_path)
             except Exception as exc:  # noqa: BLE001
                 self._on_error(str(exc))
 
+        def on_error(message: str) -> None:
+            self._end_cancellable_task()
+            self._on_error(message)
+
         self.export_panel.set_status("Instance hazırlanıyor...")
-        run_async(task, on_success=on_success, on_error=self._on_error)
+        run_async(task, on_success=on_success, on_error=on_error)
 
     # -- ortak ---------------------------------------------------------------
 

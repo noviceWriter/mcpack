@@ -77,7 +77,9 @@ class CurseForgeExporter(Exporter):
         output_path: Path,
         cache_dir: Path,
         client: httpx.AsyncClient,
+        exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
+        cancel_event=None,
     ) -> Path:
         manifest = build_manifest(pack)
 
@@ -85,11 +87,13 @@ class CurseForgeExporter(Exporter):
         # olarak overrides/mods/ altına gömülmeli.
         non_cf_mods = [m for m in pack.mods if m.source != ModSourceType.CURSEFORGE]
         embedded_files = await ensure_mods_downloaded(
-            non_cf_mods, cache_dir, client, progress_cb=progress_cb
+            non_cf_mods, cache_dir, client, progress_cb=progress_cb, cancel_event=cancel_event
         )
 
         override_files = collect_override_files(
-            source_dir, pack.overrides.include, exclude_dirs=EXCLUDED_OVERRIDE_DIR_NAMES
+            source_dir,
+            pack.overrides.include,
+            exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
         )
         for path in embedded_files.values():
             override_files.append((path, f"mods/{path.name}"))

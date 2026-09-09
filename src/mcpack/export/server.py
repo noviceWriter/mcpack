@@ -92,15 +92,19 @@ class ServerPackExporter(Exporter):
         output_path: Path,
         cache_dir: Path,
         client: httpx.AsyncClient,
+        exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
+        cancel_event=None,
     ) -> Path:
         server_mods = filter_server_mods(pack)
         mod_files = await ensure_mods_downloaded(
-            server_mods, cache_dir, client, progress_cb=progress_cb
+            server_mods, cache_dir, client, progress_cb=progress_cb, cancel_event=cancel_event
         )
 
         override_files = collect_override_files(
-            source_dir, pack.overrides.include, exclude_dirs=EXCLUDED_OVERRIDE_DIR_NAMES
+            source_dir,
+            pack.overrides.include,
+            exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
         )
 
         manifest_entries: list[tuple[str, str | bytes]] = []

@@ -58,7 +58,9 @@ async def prepare_instance(
     instances_dir: Path,
     cache_dir: Path,
     client: httpx.AsyncClient,
+    exclude_dirs: set[str] | None = None,
     progress_cb=None,
+    cancel_event=None,
 ) -> Path:
     """Pack için bir SKLauncher instance klasörü oluşturur/günceller, yolunu döner."""
     instance_dir = instances_dir / instance_dir_name(pack)
@@ -73,7 +75,9 @@ async def prepare_instance(
 
     # Instance'ta artık pack'te olmayan eski mod jar'larını temizle.
     current_names = set()
-    mod_files = await ensure_mods_downloaded(pack.mods, cache_dir, client, progress_cb=progress_cb)
+    mod_files = await ensure_mods_downloaded(
+        pack.mods, cache_dir, client, progress_cb=progress_cb, cancel_event=cancel_event
+    )
     for path in mod_files.values():
         dest = mods_dir / path.name
         shutil.copyfile(path, dest)
@@ -83,7 +87,9 @@ async def prepare_instance(
             existing.unlink()
 
     for real_path, rel in collect_override_files(
-        source_dir, pack.overrides.include, exclude_dirs=EXCLUDED_OVERRIDE_DIR_NAMES
+        source_dir,
+        pack.overrides.include,
+        exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
     ):
         dest = minecraft_dir / rel
         dest.parent.mkdir(parents=True, exist_ok=True)

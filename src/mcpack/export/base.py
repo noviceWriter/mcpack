@@ -7,6 +7,7 @@ içeren bir ZIP üretir; bu dosya o ortak iskeleti sağlar.
 
 from __future__ import annotations
 
+import threading
 import zipfile
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from pathlib import Path
 
 import httpx
 
-from mcpack.downloader import HashMismatchError, download_file, verify_hashes
+from mcpack.downloader import DownloadCancelledError, HashMismatchError, download_file, verify_hashes
 from mcpack.models import ModEntry, Pack
 from mcpack.packs.storage import PathTraversalError, safe_join
 
@@ -30,16 +31,24 @@ async def ensure_mods_downloaded(
     client: httpx.AsyncClient,
     *,
     progress_cb: ProgressCallback | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Path]:
     """Verilen mod listesini cache_dir'e indirir (hash doğrulanır).
 
     Zaten diskte olup hash'i tutan dosyalar tekrar indirilmez — export'u
     tekrar tekrar çalıştırmak ucuz olsun diye.
+
+    cancel_event set edilmişse (büyük pack'lerde kullanıcı iptal ederse,
+    proje-amacı.md §6) kalan modlar indirilmeden DownloadCancelledError
+    yükseltilir.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     result: dict[str, Path] = {}
 
     for i, entry in enumerate(mods):
+        if cancel_event is not None and cancel_event.is_set():
+            raise DownloadCancelledError("Export kullanıcı tarafından iptal edildi")
+
         dest = cache_dir / entry.file_name
         if dest.exists():
             try:
@@ -57,6 +66,7 @@ async def ensure_mods_downloaded(
             dest,
             sha1=entry.hashes.sha1,
             sha512=entry.hashes.sha512,
+            cancel_event=cancel_event,
         )
         result[entry.project_id] = dest
         if progress_cb:
@@ -142,11 +152,19 @@ class Exporter(ABC):
         output_path: Path,
         cache_dir: Path,
         client: httpx.AsyncClient,
+        exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> Path:
         """pack'i dışa aktarır ve üretilen dosyanın yolunu döner.
 
         source_dir: overrides (config, kubejs, ...) için kaynak dizin — genelde
         kullanıcının pack'i düzenlerken kullandığı çalışma klasörü.
+        exclude_dirs: overrides'tan hariç tutulacak alt dizin adları (logs,
+        crash-reports, saves, ...). None ise EXCLUDED_OVERRIDE_DIR_NAMES
+        kullanılır (proje-amacı.md §2.3 — "saves opsiyonel" hariç tutulabilmeli,
+        bu yüzden sabit değil, çağıran taraf Settings'ten besler).
+        cancel_event: set edilirse indirme kalan modlara geçmeden
+        DownloadCancelledError ile durur (proje-amacı.md §6 — iptal desteği).
         """
         ...

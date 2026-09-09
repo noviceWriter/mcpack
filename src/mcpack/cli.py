@@ -149,6 +149,7 @@ async def cmd_export(args: argparse.Namespace, settings: Settings) -> None:
             output_path=Path(args.output),
             cache_dir=settings.resolved_packs_dir() / ".cache" / pack.id,
             client=client,
+            exclude_dirs=settings.excluded_override_dirs(),
             progress_cb=lambda done, total: print(f"\r{done}/{total}", end="", file=sys.stderr),
         )
     print(f"\nOluşturuldu: {output}")

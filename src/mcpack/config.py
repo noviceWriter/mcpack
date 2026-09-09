@@ -48,6 +48,18 @@ class Settings(BaseModel):
     def resolved_packs_dir(self) -> Path:
         return Path(self.packs_dir) if self.packs_dir else default_packs_dir()
 
+    def excluded_override_dirs(self) -> set[str]:
+        """Export sırasında overrides'tan hariç tutulacak dizin adları
+        (proje-amacı.md §2.3 — "saves opsiyonel" hariç tutulabilmeli)."""
+        excluded = set()
+        if self.exclude_logs:
+            excluded.add("logs")
+        if self.exclude_crash_reports:
+            excluded.add("crash-reports")
+        if self.exclude_saves:
+            excluded.add("saves")
+        return excluded
+
     @classmethod
     def load(cls) -> Settings:
         path = config_dir() / SETTINGS_FILE

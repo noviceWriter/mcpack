@@ -73,11 +73,17 @@ class MrpackExporter(Exporter):
         output_path: Path,
         cache_dir: Path,
         client: httpx.AsyncClient,
+        exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
+        cancel_event=None,
     ) -> Path:
+        # .mrpack mod jar'larını indirmez (sadece URL referans eder), bu yüzden
+        # cancel_event burada kullanılmıyor — overrides toplama anlık bir işlem.
         index = build_index(pack)
         override_files = collect_override_files(
-            source_dir, pack.overrides.include, exclude_dirs=EXCLUDED_OVERRIDE_DIR_NAMES
+            source_dir,
+            pack.overrides.include,
+            exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
         )
         if progress_cb:
             progress_cb(1, 1)

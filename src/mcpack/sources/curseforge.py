@@ -20,6 +20,7 @@ from mcpack.sources.base import (
     ModSource,
     ModVersion,
     SearchResult,
+    SourceAPIError,
     VersionDependency,
     VersionFile,
 )
@@ -65,8 +66,25 @@ class CurseForgeClient(ModSource):
             await self._client.aclose()
 
     async def _get(self, path: str, params: dict | None = None) -> httpx.Response:
-        response = await self._client.get(f"{BASE_URL}{path}", params=params)
-        response.raise_for_status()
+        try:
+            response = await self._client.get(f"{BASE_URL}{path}", params=params)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 403 and exc.response.headers.get("x-cache", "").lower().startswith("error"):
+                raise SourceAPIError(
+                    "CurseForge isteği CDN (CloudFront) seviyesinde engellendi — "
+                    "API key ile ilgisi yok, ağ/IP kaynaklı olabilir."
+                ) from exc
+            if status == 403:
+                raise SourceAPIError(
+                    "CurseForge API key geçersiz/yetkisiz. Ayarlar'dan key'i kontrol edin."
+                ) from exc
+            if status == 404:
+                raise SourceAPIError(f"CurseForge'ta bulunamadı: {path}") from exc
+            raise SourceAPIError(f"CurseForge API hatası ({status}): {path}") from exc
+        except httpx.RequestError as exc:
+            raise SourceAPIError(f"CurseForge API'sine ulaşılamadı (ağ hatası): {exc}") from exc
         return response
 
     async def search(

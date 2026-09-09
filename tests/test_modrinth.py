@@ -3,6 +3,7 @@ import pytest
 import respx
 
 from mcpack.models import Loader
+from mcpack.sources.base import SourceAPIError
 from mcpack.sources.modrinth import BASE_URL, ModrinthClient
 
 
@@ -78,3 +79,13 @@ async def test_get_versions_parses_files_and_dependencies():
     assert v.primary_file.file_name == "sodium-0.6.0.jar"
     assert v.dependencies[0].project_id == "P7dR8mSH"
     assert v.dependencies[0].dependency_type == "required"
+
+
+@pytest.mark.asyncio
+async def test_http_error_wrapped_with_turkish_message():
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.get("/project/doesnotexist").mock(return_value=httpx.Response(404))
+        client = ModrinthClient()
+        with pytest.raises(SourceAPIError, match="bulunamadı"):
+            await client.get_project("doesnotexist")
+        await client.aclose()

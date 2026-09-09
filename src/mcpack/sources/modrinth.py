@@ -19,6 +19,7 @@ from mcpack.sources.base import (
     ModSource,
     ModVersion,
     SearchResult,
+    SourceAPIError,
     VersionDependency,
     VersionFile,
 )
@@ -46,9 +47,19 @@ class ModrinthClient(ModSource):
             await self._client.aclose()
 
     async def _get(self, path: str, params: dict | None = None) -> httpx.Response:
-        response = await self._client.get(f"{BASE_URL}{path}", params=params)
-        await self._rate_limiter.observe(response)
-        response.raise_for_status()
+        try:
+            response = await self._client.get(f"{BASE_URL}{path}", params=params)
+            await self._rate_limiter.observe(response)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 404:
+                raise SourceAPIError(f"Modrinth'te bulunamadı: {path}") from exc
+            if status == 429:
+                raise SourceAPIError("Modrinth rate limit'ine takıldı, birazdan tekrar deneyin.") from exc
+            raise SourceAPIError(f"Modrinth API hatası ({status}): {path}") from exc
+        except httpx.RequestError as exc:
+            raise SourceAPIError(f"Modrinth API'sine ulaşılamadı (ağ hatası): {exc}") from exc
         return response
 
     async def search(

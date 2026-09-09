@@ -67,6 +67,11 @@ class ModDetail(BaseModel):
     categories: list[str] = Field(default_factory=list)
 
 
+class SourceAPIError(Exception):
+    """Modrinth/CurseForge API isteği başarısız olduğunda Türkçe mesajla fırlatılır
+    (proje-amacı.md §6: "Hata mesajları anlaşılır olsun")."""
+
+
 class ModSource(ABC):
     """Bir mod kaynağının (Modrinth, CurseForge, ...) uyması gereken arayüz."""
 

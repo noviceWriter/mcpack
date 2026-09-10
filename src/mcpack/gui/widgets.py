@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QProgressBar,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -220,7 +219,12 @@ class PackListPanel(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# Orta panel: seçili pack'in içeriği
+# Ana içerik alanı: seçili pack'in başlığı + eylem araç çubuğu + mod tablosu.
+#
+# CurseForge App / Prism Launcher'da mod ekleme kalıcı bir yan panel değil,
+# ayrı bir "gözat" akışıdır (bkz. gui/mod_search_dialog.py); export/server/
+# SKLauncher gibi eylemler de başlığın yanında kompakt bir araç çubuğunda
+# durur — bu yüzden burada artık tek bir kutuya sıkışmış 4 panel yok.
 # ---------------------------------------------------------------------------
 
 
@@ -229,17 +233,51 @@ class PackDetailPanel(QWidget):
     edit_env_requested = Signal(str)
     """CurseForge gibi kaynaklarda client/server bilgisi güvenilir olmayabilir;
     kullanıcı bu sinyalle seçili modun env'ini elle düzeltebilir (proje-amacı.md §6)."""
+    add_mod_clicked = Signal()
+    export_requested = Signal(str)  # format key: mrpack/curseforge/prism
+    server_pack_requested = Signal()
+    run_sklauncher_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        group, layout = _panel_group("Pack Detayı")
-        outer.addWidget(group)
+        outer.setContentsMargins(20, 16, 20, 16)
+        outer.setSpacing(12)
 
-        self.summary_label = QLabel("Pack seçilmedi")
-        self.summary_label.setProperty("role", "muted")
-        layout.addWidget(self.summary_label)
+        header = QHBoxLayout()
+        title_col = QVBoxLayout()
+        title_col.setSpacing(2)
+        self.title_label = QLabel("Pack seçilmedi")
+        self.title_label.setStyleSheet("font-size: 19px; font-weight: 700;")
+        title_col.addWidget(self.title_label)
+        self.subtitle_label = QLabel("Soldan bir pack seçin ya da yeni oluşturun.")
+        self.subtitle_label.setProperty("role", "muted")
+        title_col.addWidget(self.subtitle_label)
+        header.addLayout(title_col)
+        header.addStretch()
+
+        self.format_combo = QComboBox()
+        self.format_combo.addItem("Modrinth (.mrpack)", "mrpack")
+        self.format_combo.addItem("CurseForge (.zip)", "curseforge")
+        self.format_combo.addItem("Prism / MultiMC (.zip)", "prism")
+        header.addWidget(self.format_combo)
+
+        export_button = QPushButton("Export Et")
+        export_button.setObjectName("primary")
+        export_button.clicked.connect(
+            lambda: self.export_requested.emit(self.format_combo.currentData())
+        )
+        header.addWidget(export_button)
+
+        server_button = QPushButton("Server Pack")
+        server_button.clicked.connect(self.server_pack_requested.emit)
+        header.addWidget(server_button)
+
+        sklauncher_button = QPushButton("SKLauncher")
+        sklauncher_button.clicked.connect(self.run_sklauncher_requested.emit)
+        header.addWidget(sklauncher_button)
+
+        outer.addLayout(header)
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Mod", "Kaynak", "Client", "Server"])
@@ -248,9 +286,14 @@ class PackDetailPanel(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.table)
+        outer.addWidget(self.table, 1)
 
         button_row = QHBoxLayout()
+        add_button = QPushButton("+ Mod Ekle")
+        add_button.setObjectName("primary")
+        add_button.clicked.connect(self.add_mod_clicked.emit)
+        button_row.addWidget(add_button)
+
         remove_button = QPushButton("Seçili Modu Çıkar")
         remove_button.setObjectName("danger")
         remove_button.clicked.connect(self._on_remove_clicked)
@@ -259,18 +302,21 @@ class PackDetailPanel(QWidget):
         env_button = QPushButton("Client/Server Düzelt")
         env_button.clicked.connect(self._on_edit_env_clicked)
         button_row.addWidget(env_button)
-        layout.addLayout(button_row)
+        button_row.addStretch()
+        outer.addLayout(button_row)
 
     def show_pack(self, pack: Pack | None) -> None:
         if pack is None:
-            self.summary_label.setText("Pack seçilmedi")
+            self.title_label.setText("Pack seçilmedi")
+            self.subtitle_label.setText("Soldan bir pack seçin ya da yeni oluşturun.")
             self.table.setRowCount(0)
             return
 
         loader_label = "Vanilla" if pack.loader.value == "vanilla" else pack.loader.value.capitalize()
         loader_version = f" {pack.loader_version}" if pack.loader_version else ""
-        self.summary_label.setText(
-            f"{pack.name}  ·  {loader_label}{loader_version}  ·  MC {pack.minecraft}  ·  {len(pack.mods)} mod"
+        self.title_label.setText(pack.name)
+        self.subtitle_label.setText(
+            f"{loader_label}{loader_version}  ·  MC {pack.minecraft}  ·  {len(pack.mods)} mod"
         )
         self.table.setRowCount(len(pack.mods))
         for row, mod in enumerate(pack.mods):
@@ -417,74 +463,3 @@ class SearchPanel(QWidget):
         row = self.results_list.currentRow()
         if 0 <= row < len(self._results):
             self.add_mod_requested.emit(self._results[row])
-
-
-# ---------------------------------------------------------------------------
-# Sağ alt panel: export / server pack / SKLauncher aksiyonları
-# ---------------------------------------------------------------------------
-
-
-class ExportPanel(QWidget):
-    export_requested = Signal(str)  # format key: mrpack/curseforge/prism
-    server_pack_requested = Signal()
-    run_sklauncher_requested = Signal()
-    cancel_requested = Signal()
-    """Büyük pack'lerde devam eden indirmeyi iptal etmek için (proje-amacı.md §6)."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        group, layout = _panel_group("Export / Aksiyonlar")
-        outer.addWidget(group)
-
-        row = QHBoxLayout()
-        self.format_combo = QComboBox()
-        self.format_combo.addItem("Modrinth (.mrpack)", "mrpack")
-        self.format_combo.addItem("CurseForge (.zip)", "curseforge")
-        self.format_combo.addItem("Prism / MultiMC (.zip)", "prism")
-        row.addWidget(self.format_combo)
-
-        export_button = QPushButton("Export Et")
-        export_button.setObjectName("primary")
-        export_button.clicked.connect(
-            lambda: self.export_requested.emit(self.format_combo.currentData())
-        )
-        row.addWidget(export_button)
-        layout.addLayout(row)
-
-        server_button = QPushButton("Server Pack Oluştur")
-        server_button.clicked.connect(self.server_pack_requested.emit)
-        layout.addWidget(server_button)
-
-        run_button = QPushButton("SKLauncher ile Çalıştır")
-        run_button.clicked.connect(self.run_sklauncher_requested.emit)
-        layout.addWidget(run_button)
-
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 1)
-        self.progress.setFixedHeight(20)
-        layout.addWidget(self.progress)
-
-        self.cancel_button = QPushButton("İptal")
-        self.cancel_button.setObjectName("danger")
-        self.cancel_button.setEnabled(False)
-        self.cancel_button.clicked.connect(self.cancel_requested.emit)
-        layout.addWidget(self.cancel_button)
-
-        self.status_label = QLabel("")
-        self.status_label.setProperty("role", "muted")
-        self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
-
-        layout.addStretch()
-
-    def set_busy(self, busy: bool) -> None:
-        self.cancel_button.setEnabled(busy)
-
-    def set_progress(self, done: int, total: int) -> None:
-        self.progress.setRange(0, max(total, 1))
-        self.progress.setValue(done)
-
-    def set_status(self, text: str) -> None:
-        self.status_label.setText(text)

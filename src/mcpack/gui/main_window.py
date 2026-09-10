@@ -1,5 +1,10 @@
-"""Ana pencere: proje-amacı.md §2.6'daki 3 panelli düzeni birleştirir ve
-tüm backend katmanlarını (sources, packs, export, launcher) GUI'ye bağlar.
+"""Ana pencere.
+
+Prism Launcher / CurseForge App'ten ilham alınan düzen: sol tarafta ince
+bir pack listesi, sağda geniş bir "ana sahne" (pack detayı + eylem araç
+çubuğu + mod tablosu). Mod ekleme ayrı bir pencerede (gui/mod_search_dialog.py)
+— kalıcı bir yan panel olarak her zaman görünmüyor. İndirme ilerlemesi ve
+durum mesajları alt durum çubuğunda (QStatusBar), ayrı bir panel değil.
 """
 
 from __future__ import annotations
@@ -11,17 +16,21 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QInputDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
+    QPushButton,
     QSplitter,
 )
 
 from mcpack.config import Settings
 from mcpack.downloader import make_client
 from mcpack.export import CurseForgeExporter, MrpackExporter, PrismExporter, ServerPackExporter
+from mcpack.gui.mod_search_dialog import ModSearchDialog
 from mcpack.gui.new_pack_dialog import NewPackDialog
 from mcpack.gui.settings_dialog import SettingsDialog
-from mcpack.gui.widgets import ExportPanel, PackDetailPanel, PackListPanel, SearchPanel, run_async
+from mcpack.gui.widgets import PackDetailPanel, PackListPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
 from mcpack.models import EnvRequirement, ModSourceType, Pack
 from mcpack.packs import PackManager
@@ -39,30 +48,28 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("MC Pack Manager")
-        self.resize(1150, 700)
+        self.resize(1320, 820)
 
         self.settings = Settings.load()
         self.manager = PackManager(self.settings.resolved_packs_dir())
         self.current_pack: Pack | None = None
         self._cancel_event: threading.Event | None = None
+        self._mod_search_dialog: ModSearchDialog | None = None
 
         self.pack_list = PackListPanel()
+        self.pack_list.setMaximumWidth(320)
         self.pack_detail = PackDetailPanel()
-        self.search_panel = SearchPanel()
-        self.export_panel = ExportPanel()
 
-        right_splitter = QSplitter(Qt.Orientation.Vertical)
-        right_splitter.addWidget(self.search_panel)
-        right_splitter.addWidget(self.export_panel)
-
-        main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_splitter.addWidget(self.pack_list)
-        main_splitter.addWidget(self.pack_detail)
-        main_splitter.addWidget(right_splitter)
-        main_splitter.setSizes([250, 550, 350])
-        self.setCentralWidget(main_splitter)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(self.pack_list)
+        splitter.addWidget(self.pack_detail)
+        splitter.setSizes([300, 1020])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        self.setCentralWidget(splitter)
 
         self._build_menu()
+        self._build_status_bar()
         self._wire_signals()
         self.reload_packs()
 
@@ -73,17 +80,44 @@ class MainWindow(QMainWindow):
         action = menu.addAction("CurseForge API Key / SKLauncher Yolu")
         action.triggered.connect(self.open_settings_dialog)
 
+    def _build_status_bar(self) -> None:
+        """Export/server pack/SKLauncher ilerlemesi burada gösterilir — CurseForge/
+        Prism'de de indirme ilerlemesi ayrı bir panel değil, alt durum çubuğundadır."""
+        bar = self.statusBar()
+
+        self.status_label = QLabel("Hazır")
+        bar.addWidget(self.status_label, 1)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedWidth(180)
+        self.progress_bar.setFixedHeight(16)
+        self.progress_bar.setRange(0, 1)
+        bar.addPermanentWidget(self.progress_bar)
+
+        self.cancel_button = QPushButton("İptal")
+        self.cancel_button.setObjectName("danger")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.cancel_current_task)
+        bar.addPermanentWidget(self.cancel_button)
+
     def _wire_signals(self) -> None:
         self.pack_list.new_pack_requested.connect(self.create_pack_dialog)
         self.pack_list.pack_selected.connect(self.select_pack)
         self.pack_detail.remove_mod_requested.connect(self.remove_mod)
         self.pack_detail.edit_env_requested.connect(self.edit_mod_env)
-        self.search_panel.search_requested.connect(self.do_search)
-        self.search_panel.add_mod_requested.connect(self.add_mod)
-        self.export_panel.export_requested.connect(self.do_export)
-        self.export_panel.server_pack_requested.connect(self.do_server_pack)
-        self.export_panel.run_sklauncher_requested.connect(self.do_run_sklauncher)
-        self.export_panel.cancel_requested.connect(self.cancel_current_task)
+        self.pack_detail.add_mod_clicked.connect(self.open_mod_search_dialog)
+        self.pack_detail.export_requested.connect(self.do_export)
+        self.pack_detail.server_pack_requested.connect(self.do_server_pack)
+        self.pack_detail.run_sklauncher_requested.connect(self.do_run_sklauncher)
+
+    # -- durum çubuğu ---------------------------------------------------------
+
+    def set_status(self, text: str) -> None:
+        self.status_label.setText(text)
+
+    def set_progress(self, done: int, total: int) -> None:
+        self.progress_bar.setRange(0, max(total, 1))
+        self.progress_bar.setValue(done)
 
     # -- ayarlar -------------------------------------------------------------
 
@@ -116,6 +150,10 @@ class MainWindow(QMainWindow):
     def select_pack(self, pack_id: str) -> None:
         self.current_pack = self.manager.load(pack_id)
         self.pack_detail.show_pack(self.current_pack)
+        # Açık mod arama penceresi başka bir pack'e ait olabilir — kapat.
+        if self._mod_search_dialog is not None:
+            self._mod_search_dialog.close()
+            self._mod_search_dialog = None
 
     def remove_mod(self, project_id: str) -> None:
         if not self.current_pack:
@@ -159,9 +197,28 @@ class MainWindow(QMainWindow):
             return CurseForgeClient(self.settings.curseforge_api_key)
         return ModrinthClient()
 
-    def do_search(self, query: str, source_name: str) -> None:
+    def open_mod_search_dialog(self) -> None:
         if not self.current_pack:
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
+            return
+
+        if self._mod_search_dialog is not None:
+            self._mod_search_dialog.raise_()
+            self._mod_search_dialog.activateWindow()
+            return
+
+        dialog = ModSearchDialog(self.current_pack, self)
+        dialog.search_panel.search_requested.connect(self.do_search)
+        dialog.search_panel.add_mod_requested.connect(self.add_mod)
+        dialog.finished.connect(self._on_mod_search_dialog_closed)
+        self._mod_search_dialog = dialog
+        dialog.show()
+
+    def _on_mod_search_dialog_closed(self) -> None:
+        self._mod_search_dialog = None
+
+    def do_search(self, query: str, source_name: str) -> None:
+        if not self.current_pack:
             return
         pack = self.current_pack
 
@@ -193,12 +250,13 @@ class MainWindow(QMainWindow):
             finally:
                 await source.aclose()
 
-        self.export_panel.set_status("Aranıyor...")
+        self.set_status("Aranıyor...")
         run_async(task, on_success=self._on_search_done, on_error=self._on_error)
 
     def _on_search_done(self, results: list[SearchResult]) -> None:
-        self.search_panel.set_results(results)
-        self.export_panel.set_status("Hazır")
+        if self._mod_search_dialog is not None:
+            self._mod_search_dialog.search_panel.set_results(results)
+        self.set_status("Hazır")
 
     def add_mod(self, result: SearchResult) -> None:
         if not self.current_pack:
@@ -223,12 +281,12 @@ class MainWindow(QMainWindow):
             finally:
                 await source.aclose()
 
-        self.export_panel.set_status(f"{result.title} ekleniyor...")
+        self.set_status(f"{result.title} ekleniyor...")
         run_async(task, on_success=lambda _: self._on_mod_added(), on_error=self._on_error)
 
     def _on_mod_added(self) -> None:
         self.pack_detail.show_pack(self.current_pack)
-        self.export_panel.set_status("Mod eklendi")
+        self.set_status("Mod eklendi")
 
     # -- export / server pack / sklauncher -----------------------------------
 
@@ -243,17 +301,17 @@ class MainWindow(QMainWindow):
         launcher görevi kendi cancel_event'iyle başlar, "İptal" butonu aktifleşir."""
         event = threading.Event()
         self._cancel_event = event
-        self.export_panel.set_busy(True)
+        self.cancel_button.setEnabled(True)
         return event
 
     def _end_cancellable_task(self) -> None:
         self._cancel_event = None
-        self.export_panel.set_busy(False)
+        self.cancel_button.setEnabled(False)
 
     def cancel_current_task(self) -> None:
         if self._cancel_event is not None:
             self._cancel_event.set()
-            self.export_panel.set_status("İptal ediliyor...")
+            self.set_status("İptal ediliyor...")
 
     def do_export(self, format_key: str) -> None:
         if not self.current_pack:
@@ -279,15 +337,15 @@ class MainWindow(QMainWindow):
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
                     client=client,
                     exclude_dirs=self.settings.excluded_override_dirs(),
-                    progress_cb=self.export_panel.set_progress,
+                    progress_cb=self.set_progress,
                     cancel_event=cancel_event,
                 )
 
-        self.export_panel.set_status("Export ediliyor...")
+        self.set_status("Export ediliyor...")
 
         def on_success(p: Path) -> None:
             self._end_cancellable_task()
-            self.export_panel.set_status(f"Tamamlandı: {p}")
+            self.set_status(f"Tamamlandı: {p}")
 
         def on_error(message: str) -> None:
             self._end_cancellable_task()
@@ -316,15 +374,15 @@ class MainWindow(QMainWindow):
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
                     client=client,
                     exclude_dirs=self.settings.excluded_override_dirs(),
-                    progress_cb=self.export_panel.set_progress,
+                    progress_cb=self.set_progress,
                     cancel_event=cancel_event,
                 )
 
-        self.export_panel.set_status("Server pack oluşturuluyor...")
+        self.set_status("Server pack oluşturuluyor...")
 
         def on_success(p: Path) -> None:
             self._end_cancellable_task()
-            self.export_panel.set_status(f"Server pack hazır: {p}")
+            self.set_status(f"Server pack hazır: {p}")
 
         def on_error(message: str) -> None:
             self._end_cancellable_task()
@@ -353,13 +411,13 @@ class MainWindow(QMainWindow):
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
                     client=client,
                     exclude_dirs=self.settings.excluded_override_dirs(),
-                    progress_cb=self.export_panel.set_progress,
+                    progress_cb=self.set_progress,
                     cancel_event=cancel_event,
                 )
 
         def on_success(instance_dir: Path) -> None:
             self._end_cancellable_task()
-            self.export_panel.set_status(f"Instance hazır: {instance_dir} — SKLauncher başlatılıyor")
+            self.set_status(f"Instance hazır: {instance_dir} — SKLauncher başlatılıyor")
             try:
                 launch(self.settings.sklauncher_path)
             except Exception as exc:  # noqa: BLE001
@@ -369,11 +427,11 @@ class MainWindow(QMainWindow):
             self._end_cancellable_task()
             self._on_error(message)
 
-        self.export_panel.set_status("Instance hazırlanıyor...")
+        self.set_status("Instance hazırlanıyor...")
         run_async(task, on_success=on_success, on_error=on_error)
 
     # -- ortak ---------------------------------------------------------------
 
     def _on_error(self, message: str) -> None:
         QMessageBox.critical(self, "Hata", message)
-        self.export_panel.set_status("Hata")
+        self.set_status("Hata")

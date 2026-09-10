@@ -218,6 +218,11 @@ class MainWindow(QMainWindow):
         self._mod_search_dialog = dialog
         dialog.show()
 
+        # CurseForge/Modrinth App gibi: pencere açılır açılmaz, arama
+        # yazılmasını beklemeden popüler modları listele (indirme sayısına
+        # göre sıralı gelir — boş sorgu Modrinth/CurseForge'ta geçerlidir).
+        self.do_search("", dialog.search_panel.source_combo.currentData())
+
     def _on_mod_search_dialog_closed(self) -> None:
         self._mod_search_dialog = None
 

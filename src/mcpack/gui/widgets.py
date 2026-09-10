@@ -522,6 +522,7 @@ class SearchPanel(QWidget):
         self.source_combo.addItem("Tümü (Modrinth + CurseForge)", "both")
         for s in ModSourceType:
             self.source_combo.addItem(_SOURCE_LABELS.get(s.value, s.value), s.value)
+        self.source_combo.currentIndexChanged.connect(self._on_search_clicked)
         row.addWidget(self.source_combo)
 
         search_button = QPushButton("Ara")
@@ -540,9 +541,10 @@ class SearchPanel(QWidget):
         layout.addWidget(add_button)
 
     def _on_search_clicked(self) -> None:
+        # Boş sorgu da geçerli: CurseForge/Modrinth App'te olduğu gibi
+        # popüler modları (indirme sayısına göre) listeler.
         query = self.query_input.text().strip()
-        if query:
-            self.search_requested.emit(query, self.source_combo.currentData())
+        self.search_requested.emit(query, self.source_combo.currentData())
 
     def set_results(self, results: list[SearchResult]) -> None:
         self._results = results

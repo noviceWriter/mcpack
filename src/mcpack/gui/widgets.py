@@ -11,7 +11,7 @@ import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -503,7 +503,11 @@ class _ModResultCard(QWidget):
         layout.addLayout(text_col, 1)
 
         if result.icon_url:
-            load_icon(result.icon_url, lambda pixmap: _set_scaled_pixmap(self.icon_label, pixmap))
+            load_icon(
+                result.icon_url,
+                lambda pixmap: _set_scaled_pixmap(self.icon_label, pixmap),
+                owner=self.icon_label,
+            )
 
     def set_already_added(self, added: bool) -> None:
         self.added_badge.setVisible(added)
@@ -514,6 +518,9 @@ class SearchPanel(QWidget):
     add_mod_requested = Signal(object)  # SearchResult
 
     PAGE_SIZE = 20
+    LIVE_SEARCH_DEBOUNCE_MS = 450
+    """Kullanıcı yazmayı bıraktıktan bu kadar ms sonra otomatik arama tetiklenir
+    (her tuş vuruşunda değil — gereksiz API isteğini önlemek için)."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -532,6 +539,11 @@ class SearchPanel(QWidget):
         self.query_input = QLineEdit()
         self.query_input.setPlaceholderText("Mod adı...")
         self.query_input.returnPressed.connect(self._on_search_clicked)
+        self._live_search_timer = QTimer(self)
+        self._live_search_timer.setSingleShot(True)
+        self._live_search_timer.setInterval(self.LIVE_SEARCH_DEBOUNCE_MS)
+        self._live_search_timer.timeout.connect(self._on_search_clicked)
+        self.query_input.textEdited.connect(lambda _: self._live_search_timer.start())
         row.addWidget(self.query_input)
 
         self.source_combo = QComboBox()
@@ -562,6 +574,7 @@ class SearchPanel(QWidget):
     def _on_search_clicked(self) -> None:
         # Boş sorgu da geçerli: CurseForge/Modrinth App'te olduğu gibi
         # popüler modları (indirme sayısına göre) listeler.
+        self._live_search_timer.stop()
         self._has_more = True
         query = self.query_input.text().strip()
         self.search_requested.emit(query, self.source_combo.currentData(), 0)

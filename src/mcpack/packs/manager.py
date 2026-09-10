@@ -168,3 +168,34 @@ class PackManager:
             )
 
         return resolved
+
+    async def resolve_optional_dependencies(
+        self,
+        pack: Pack,
+        source: ModSource,
+        version: ModVersion,
+    ) -> list[ModVersion]:
+        """Bir versiyonun 'optional' (önerilen ama zorunlu olmayan)
+        bağımlılıklarını getirir — required'ın aksine OTOMATİK EKLENMEZ,
+        kullanıcının seçip seçmeyeceğine karar vermesi için döner.
+
+        Sadece verilen versiyonun doğrudan opsiyonel bağımlılıklarına bakar
+        (zorunlu bağımlılıkların kendi opsiyonelleri dahil edilmez —
+        listenin patlamaması için).
+        """
+        existing_ids = {m.project_id for m in pack.mods} | {version.project_id}
+        optional_ids = [
+            d.project_id
+            for d in version.dependencies
+            if d.dependency_type == "optional" and d.project_id and d.project_id not in existing_ids
+        ]
+
+        resolved: list[ModVersion] = []
+        for project_id in optional_ids:
+            versions = await source.get_versions(
+                project_id, game_version=pack.minecraft, loader=pack.loader
+            )
+            if versions:
+                resolved.append(versions[0])
+
+        return resolved

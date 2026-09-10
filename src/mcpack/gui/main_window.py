@@ -29,13 +29,14 @@ from mcpack.downloader import make_client
 from mcpack.export import CurseForgeExporter, MrpackExporter, PrismExporter, ServerPackExporter
 from mcpack.gui.mod_search_dialog import ModSearchDialog
 from mcpack.gui.new_pack_dialog import NewPackDialog
+from mcpack.gui.recommended_mods_dialog import RecommendedModsDialog
 from mcpack.gui.settings_dialog import SettingsDialog
 from mcpack.gui.widgets import PackDetailPanel, PackListPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
 from mcpack.models import EnvRequirement, Loader, ModSourceType, Pack
 from mcpack.packs import PackManager
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
-from mcpack.sources.base import SearchResult
+from mcpack.sources.base import ModDetail, ModVersion, SearchResult
 
 _FORMAT_EXPORTERS = {
     "mrpack": MrpackExporter,
@@ -266,7 +267,7 @@ class MainWindow(QMainWindow):
             return
         pack = self.current_pack
 
-        async def task():
+        async def task() -> list[tuple]:
             source = self._make_source(result.source.value)
             try:
                 detail = await source.get_project(result.project_id)
@@ -281,15 +282,34 @@ class MainWindow(QMainWindow):
                 for dep_version in deps:
                     dep_detail = await source.get_project(dep_version.project_id)
                     self.manager.add_mod(pack, dep_version, dep_detail)
+
+                # Zorunlu olmayan (optional) bağımlılıklar otomatik eklenmez —
+                # kullanıcıya "Önerilen Modlar" penceresinde seçtiriyoruz.
+                optional_versions = await self.manager.resolve_optional_dependencies(
+                    pack, source, versions[0]
+                )
+                suggestions = []
+                for opt_version in optional_versions:
+                    opt_detail = await source.get_project(opt_version.project_id)
+                    suggestions.append((opt_version, opt_detail))
+                return suggestions
             finally:
                 await source.aclose()
 
         self.set_status(f"{result.title} ekleniyor...")
-        run_async(task, on_success=lambda _: self._on_mod_added(), on_error=self._on_error)
+        run_async(task, on_success=self._on_mod_added, on_error=self._on_error)
 
-    def _on_mod_added(self) -> None:
+    def _on_mod_added(self, suggestions: list[tuple[ModVersion, ModDetail]]) -> None:
         self.pack_detail.show_pack(self.current_pack)
         self.set_status("Mod eklendi")
+
+        if not suggestions or not self.current_pack:
+            return
+        dialog = RecommendedModsDialog(suggestions, self)
+        if dialog.exec() == RecommendedModsDialog.DialogCode.Accepted:
+            for version, detail in dialog.selected():
+                self.manager.add_mod(self.current_pack, version, detail)
+            self.pack_detail.show_pack(self.current_pack)
 
     # -- export / server pack / sklauncher -----------------------------------
 

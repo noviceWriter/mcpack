@@ -125,6 +125,13 @@ async def cmd_add_mod(args: argparse.Namespace, settings: Settings) -> None:
             dep_detail = await source.get_project(dep_version.project_id)
             dep_entry = manager.add_mod(pack, dep_version, dep_detail)
             print(f"  + bağımlılık: {dep_entry.file_name}")
+
+        optional_versions = await manager.resolve_optional_dependencies(pack, source, versions[0])
+        if optional_versions:
+            print("Önerilen (opsiyonel, otomatik eklenmedi):")
+            for opt_version in optional_versions:
+                opt_detail = await source.get_project(opt_version.project_id)
+                print(f"  - {opt_version.project_id}  {opt_detail.title}")
     finally:
         await source.aclose()
 

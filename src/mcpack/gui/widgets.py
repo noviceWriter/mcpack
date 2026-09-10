@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from mcpack.gui.icon_loader import load_icon
-from mcpack.gui.theme import SOURCE_MODRINTH, loader_color, source_color
+from mcpack.gui.theme import SOURCE_MODRINTH, chip_colors, icon_placeholder_bg, loader_color, source_color
 from mcpack.models import ModEntry, ModSourceType, Pack
 from mcpack.sources.base import SearchResult
 
@@ -159,8 +159,9 @@ def _env_badge_widget(client: str, server: str) -> QWidget:
     if text == "Bilinmiyor":
         chip.setProperty("role", "muted")
     else:
+        chip_bg, chip_text = chip_colors()
         chip.setStyleSheet(
-            "background-color: #2f333a; color: #cfd2d6; border-radius: 4px; "
+            f"background-color: {chip_bg}; color: {chip_text}; border-radius: 4px; "
             "padding: 2px 8px; font-size: 11px;"
         )
     layout.addWidget(chip)
@@ -168,13 +169,9 @@ def _env_badge_widget(client: str, server: str) -> QWidget:
     return container
 
 
-def _colored_item(text: str, color_hex: str, *, background: bool = False) -> QTableWidgetItem:
+def _colored_item(text: str, color_hex: str) -> QTableWidgetItem:
     item = QTableWidgetItem(text)
-    if background:
-        item.setBackground(QColor(color_hex))
-        item.setForeground(QColor("#f0f0f0"))
-    else:
-        item.setForeground(QColor(color_hex))
+    item.setForeground(QColor(color_hex))
     return item
 
 
@@ -196,7 +193,7 @@ def _icon_label(size: int = 40) -> QLabel:
     label = QLabel()
     label.setFixedSize(size, size)
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    label.setStyleSheet("background-color: #2b2d31; border-radius: 8px;")
+    label.setStyleSheet(f"background-color: {icon_placeholder_bg()}; border-radius: 8px;")
     return label
 
 
@@ -285,6 +282,12 @@ class PackListPanel(QWidget):
 # durur — bu yüzden burada artık tek bir kutuya sıkışmış 4 panel yok.
 # ---------------------------------------------------------------------------
 
+_MOD_SORT_KEYS: dict[int, Callable[[ModEntry], str]] = {
+    0: lambda m: (m.name or m.file_name).lower(),  # Mod
+    1: lambda m: m.source.value,  # Kaynak
+    2: lambda m: _environment_label(m.env.client.value, m.env.server.value),  # Ortam
+}
+
 
 class PackDetailPanel(QWidget):
     remove_mod_requested = Signal(str)
@@ -345,22 +348,28 @@ class PackDetailPanel(QWidget):
         self.mod_filter_input.textChanged.connect(self._on_filter_or_sort_changed)
         table_options_row.addWidget(self.mod_filter_input, 1)
 
-        self.mod_sort_combo = QComboBox()
-        self.mod_sort_combo.addItem("Sırala: Eklenme sırası", "default")
-        self.mod_sort_combo.addItem("Sırala: Ad (A-Z)", "name_asc")
-        self.mod_sort_combo.addItem("Sırala: Ad (Z-A)", "name_desc")
-        self.mod_sort_combo.addItem("Sırala: Kaynak", "source")
-        self.mod_sort_combo.currentIndexChanged.connect(self._on_filter_or_sort_changed)
-        table_options_row.addWidget(self.mod_sort_combo)
+        sort_hint = QLabel("Sıralamak için sütun başlığına tıkla ↓")
+        sort_hint.setProperty("role", "muted")
+        table_options_row.addWidget(sort_hint)
 
         self.show_file_names_checkbox = QCheckBox("Dosya adlarını göster")
         self.show_file_names_checkbox.toggled.connect(self._on_show_file_names_toggled)
         table_options_row.addWidget(self.show_file_names_checkbox)
         outer.addLayout(table_options_row)
 
+        # Sıralama: ayrı bir kutu yerine "Mod / Kaynak / Ortam" başlıklarına
+        # tıklanarak yapılır (kullanıcı isteği) — QTableWidget'ın kendi
+        # setSortingEnabled'ı cellWidget'ları satırla birlikte taşımadığı
+        # için (bilinen Qt sınırlaması), sıralamayı kendimiz uyguluyoruz.
+        self._sort_column = -1
+        self._sort_order = Qt.SortOrder.AscendingOrder
+
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Mod", "Kaynak", "Ortam"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionsClickable(True)
+        self.table.horizontalHeader().setSortIndicatorShown(True)
+        self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         self.table.setColumnWidth(1, 100)
         self.table.setColumnWidth(2, 220)
         self.table.verticalHeader().setVisible(False)
@@ -403,18 +412,29 @@ class PackDetailPanel(QWidget):
         if query:
             mods = [m for m in mods if query in (m.name or "").lower() or query in m.file_name.lower()]
 
-        sort_mode = self.mod_sort_combo.currentData()
-        if sort_mode == "name_asc":
-            mods.sort(key=lambda m: (m.name or m.file_name).lower())
-        elif sort_mode == "name_desc":
-            mods.sort(key=lambda m: (m.name or m.file_name).lower(), reverse=True)
-        elif sort_mode == "source":
-            mods.sort(key=lambda m: m.source.value)
-        # "default" -> pack.mods sırası (eklenme sırası) korunur
+        if self._sort_column >= 0:
+            key_func = _MOD_SORT_KEYS[self._sort_column]
+            mods.sort(key=key_func, reverse=self._sort_order == Qt.SortOrder.DescendingOrder)
+        # _sort_column == -1 -> pack.mods sırası (eklenme sırası) korunur
 
         return mods
 
     def _on_filter_or_sort_changed(self, *_args) -> None:
+        self.show_pack(self._current_pack)
+
+    def _on_header_clicked(self, column: int) -> None:
+        if column not in _MOD_SORT_KEYS:
+            return
+        if self._sort_column == column:
+            self._sort_order = (
+                Qt.SortOrder.DescendingOrder
+                if self._sort_order == Qt.SortOrder.AscendingOrder
+                else Qt.SortOrder.AscendingOrder
+            )
+        else:
+            self._sort_column = column
+            self._sort_order = Qt.SortOrder.AscendingOrder
+        self.table.horizontalHeader().setSortIndicator(self._sort_column, self._sort_order)
         self.show_pack(self._current_pack)
 
     def show_pack(self, pack: Pack | None) -> None:
@@ -426,7 +446,6 @@ class PackDetailPanel(QWidget):
             self.table.hide()
             self.mod_actions_bar.hide()
             self.mod_filter_input.hide()
-            self.mod_sort_combo.hide()
             self.show_file_names_checkbox.hide()
             self.vanilla_notice.hide()
             return
@@ -444,7 +463,6 @@ class PackDetailPanel(QWidget):
         self.table.setVisible(not is_vanilla)
         self.mod_actions_bar.setVisible(not is_vanilla)
         self.mod_filter_input.setVisible(not is_vanilla)
-        self.mod_sort_combo.setVisible(not is_vanilla)
         self.show_file_names_checkbox.setVisible(not is_vanilla)
         self.vanilla_notice.setVisible(is_vanilla)
         if is_vanilla:

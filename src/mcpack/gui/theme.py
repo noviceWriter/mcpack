@@ -27,6 +27,9 @@ DARK_PALETTE = {
     "scrollbar_handle_hover": "#4a4d54",
     "selected_text": "#ffffff",
     "danger_text": "#ff9a9a",
+    "chip_bg": "#2f333a",
+    "chip_text": "#cfd2d6",
+    "icon_placeholder_bg": "#2b2d31",
 }
 
 LIGHT_PALETTE = {
@@ -44,6 +47,9 @@ LIGHT_PALETTE = {
     "scrollbar_handle_hover": "#adb2ba",
     "selected_text": "#ffffff",
     "danger_text": "#c23b3b",
+    "chip_bg": "#e7e9ec",
+    "chip_text": "#3a3d42",
+    "icon_placeholder_bg": "#eef0f3",
 }
 
 
@@ -230,10 +236,32 @@ DARK_STYLESHEET = _build_stylesheet(DARK_PALETTE)
 LIGHT_STYLESHEET = _build_stylesheet(LIGHT_PALETTE)
 
 THEMES = {"dark": DARK_STYLESHEET, "light": LIGHT_STYLESHEET}
+PALETTES = {"dark": DARK_PALETTE, "light": LIGHT_PALETTE}
+
+_active_theme = "dark"
+"""Global QSS ile stillendirilemeyen, Python tarafında elle çizilen rozet/
+placeholder renkleri (bkz. chip_colors, icon_placeholder_bg) bu aktif
+temayı okur — aksi halde açık temada koyu renkli rozetler kalıp göze
+batardı (kullanıcı geri bildirimi: "beyaz tema çok kötü ürkünç olmuş")."""
+
+
+def set_active_theme(theme_name: str) -> None:
+    global _active_theme
+    _active_theme = theme_name if theme_name in PALETTES else "dark"
 
 
 def stylesheet_for(theme_name: str) -> str:
     return THEMES.get(theme_name, DARK_STYLESHEET)
+
+
+def chip_colors() -> tuple[str, str]:
+    """(arka_plan, metin) — mod tablosundaki 'Ortam' rozeti için."""
+    p = PALETTES[_active_theme]
+    return p["chip_bg"], p["chip_text"]
+
+
+def icon_placeholder_bg() -> str:
+    return PALETTES[_active_theme]["icon_placeholder_bg"]
 
 
 def source_color(value: str) -> str:

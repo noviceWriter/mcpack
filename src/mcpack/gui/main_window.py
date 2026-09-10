@@ -35,7 +35,7 @@ from mcpack.gui.mod_search_dialog import ModSearchDialog
 from mcpack.gui.new_pack_dialog import NewPackDialog
 from mcpack.gui.recommended_mods_dialog import RecommendedModsDialog
 from mcpack.gui.settings_dialog import SettingsDialog
-from mcpack.gui.theme import stylesheet_for
+from mcpack.gui.theme import set_active_theme, stylesheet_for
 from mcpack.gui.widgets import PackDetailPanel, PackListPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
 from mcpack.models import EnvRequirement, Loader, ModSourceType, Pack
@@ -83,9 +83,16 @@ class MainWindow(QMainWindow):
     # -- kurulum -----------------------------------------------------------
 
     def _apply_theme(self) -> None:
+        set_active_theme(self.settings.theme)
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(stylesheet_for(self.settings.theme))
+        # Zaten çizilmiş rozet/ikon renkleri (QSS'in kapsamadığı, Python
+        # tarafında elle stillenen widget'lar) yeniden render edilmeden
+        # güncellenmez — pack_detail henüz kurulmadıysa (ilk açılış) atla.
+        pack_detail = getattr(self, "pack_detail", None)
+        if pack_detail is not None:
+            pack_detail.show_pack(self.current_pack)
 
     def _build_toolbar(self) -> None:
         """Ayarlar eskiden sadece menü çubuğunda tek satırlık bir menüydü —

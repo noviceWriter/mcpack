@@ -25,31 +25,38 @@ DARK_PALETTE = {
     "alt_row_bg": "#26282c",
     "scrollbar_handle": "#3a3d41",
     "scrollbar_handle_hover": "#4a4d54",
+    "selected_bg": "#3d6bb3",
     "selected_text": "#ffffff",
+    "on_accent_text": "#ffffff",
     "danger_text": "#ff9a9a",
     "chip_bg": "#2f333a",
     "chip_text": "#cfd2d6",
     "icon_placeholder_bg": "#2b2d31",
 }
 
+# Kullanıcının referans aldığı tasarımdan (yumuşak büyük köşeler, dolgun
+# koyu seçim yerine hafif mavi tonlu seçim, panellerde gerçek yükselti/
+# gölge hissi) ilham alınarak Tailwind Slate tonlarıyla yeniden kuruldu.
 LIGHT_PALETTE = {
-    "accent": "#2f6fe0",
-    "accent_dim": "#1f52ad",
-    "bg": "#f3f4f6",
+    "accent": "#2563eb",
+    "accent_dim": "#1d4ed8",
+    "bg": "#eef1f5",
     "panel_bg": "#ffffff",
     "field_bg": "#ffffff",
-    "border": "#d9dce1",
-    "text": "#1c1d1f",
-    "text_muted": "#6b6f76",
-    "hover_bg": "#eef1f5",
-    "alt_row_bg": "#f7f8fa",
-    "scrollbar_handle": "#c7cbd1",
-    "scrollbar_handle_hover": "#adb2ba",
-    "selected_text": "#ffffff",
-    "danger_text": "#c23b3b",
-    "chip_bg": "#e7e9ec",
-    "chip_text": "#3a3d42",
-    "icon_placeholder_bg": "#eef0f3",
+    "border": "#e1e5eb",
+    "text": "#1e2430",
+    "text_muted": "#6b7280",
+    "hover_bg": "#f4f6f9",
+    "alt_row_bg": "#f8f9fb",
+    "scrollbar_handle": "#cbd2d9",
+    "scrollbar_handle_hover": "#a8b0ba",
+    "selected_bg": "#e8f0fe",
+    "selected_text": "#1d4ed8",
+    "on_accent_text": "#ffffff",
+    "danger_text": "#dc2626",
+    "chip_bg": "#eef1f5",
+    "chip_text": "#374151",
+    "icon_placeholder_bg": "#eef1f5",
 }
 
 
@@ -67,9 +74,9 @@ QMainWindow, QDialog {{
 QGroupBox {{
     background-color: {p['panel_bg']};
     border: 1px solid {p['border']};
-    border-radius: 6px;
+    border-radius: 12px;
     margin-top: 14px;
-    padding: 10px 8px 8px 8px;
+    padding: 12px 10px 10px 10px;
     font-weight: 600;
 }}
 QGroupBox::title {{
@@ -84,9 +91,12 @@ QGroupBox::title {{
 QListWidget, QTableWidget, QTreeWidget, QLineEdit, QTextEdit, QComboBox {{
     background-color: {p['field_bg']};
     border: 1px solid {p['border']};
-    border-radius: 5px;
+    border-radius: 10px;
     padding: 4px;
-    selection-background-color: {p['accent_dim']};
+    selection-background-color: {p['selected_bg']};
+}}
+QLineEdit, QComboBox {{
+    padding: 6px 8px;
 }}
 QLineEdit:focus, QComboBox:focus, QTextEdit:focus {{
     border: 1px solid {p['accent']};
@@ -94,9 +104,10 @@ QLineEdit:focus, QComboBox:focus, QTextEdit:focus {{
 QListWidget::item, QTableWidget::item {{
     padding: 3px;
     border: none;
+    border-radius: 6px;
 }}
 QListWidget::item:selected, QTableWidget::item:selected {{
-    background-color: {p['accent_dim']};
+    background-color: {p['selected_bg']};
     color: {p['selected_text']};
 }}
 QListWidget::item:hover, QTableWidget::item:hover {{
@@ -108,13 +119,14 @@ QTableWidget {{
 }}
 QTableWidget::item {{
     border-bottom: 1px solid {p['border']};
+    border-radius: 0px;
 }}
 
 QPushButton {{
     background-color: {p['field_bg']};
     border: 1px solid {p['border']};
-    border-radius: 5px;
-    padding: 7px 14px;
+    border-radius: 9px;
+    padding: 7px 16px;
 }}
 QPushButton:hover {{
     background-color: {p['hover_bg']};
@@ -122,7 +134,7 @@ QPushButton:hover {{
 }}
 QPushButton:pressed {{
     background-color: {p['accent_dim']};
-    color: {p['selected_text']};
+    color: {p['on_accent_text']};
 }}
 QPushButton:disabled {{
     color: {p['text_muted']};
@@ -130,13 +142,14 @@ QPushButton:disabled {{
 }}
 
 QPushButton#primary {{
-    background-color: {p['accent_dim']};
+    background-color: {p['accent']};
     border: 1px solid {p['accent']};
-    color: {p['selected_text']};
+    color: {p['on_accent_text']};
     font-weight: 600;
 }}
 QPushButton#primary:hover {{
-    background-color: {p['accent']};
+    background-color: {p['accent_dim']};
+    border: 1px solid {p['accent_dim']};
 }}
 QPushButton#danger {{
     color: {p['danger_text']};
@@ -163,13 +176,13 @@ QSplitter::handle {{
 
 QProgressBar {{
     border: 1px solid {p['border']};
-    border-radius: 5px;
+    border-radius: 8px;
     text-align: center;
     background-color: {p['field_bg']};
 }}
 QProgressBar::chunk {{
     background-color: {p['accent']};
-    border-radius: 4px;
+    border-radius: 7px;
 }}
 
 QLabel[role="heading"] {{
@@ -202,10 +215,12 @@ QMenuBar::item:selected {{
 QMenu {{
     background-color: {p['panel_bg']};
     border: 1px solid {p['border']};
+    border-radius: 10px;
 }}
 QMenu::item:selected {{
     background-color: {p['accent_dim']};
-    color: {p['selected_text']};
+    color: {p['on_accent_text']};
+    border-radius: 6px;
 }}
 
 QStatusBar {{
@@ -262,6 +277,21 @@ def chip_colors() -> tuple[str, str]:
 
 def icon_placeholder_bg() -> str:
     return PALETTES[_active_theme]["icon_placeholder_bg"]
+
+
+def apply_card_shadow(widget) -> None:
+    """Panellere (QGroupBox'lar) referans tasarımdaki gibi hafif bir
+    yükselti/gölge verir — QSS'in box-shadow'u olmadığı için
+    QGraphicsDropShadowEffect ile emüle ediyoruz."""
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QGraphicsDropShadowEffect
+
+    effect = QGraphicsDropShadowEffect(widget)
+    effect.setBlurRadius(22)
+    effect.setXOffset(0)
+    effect.setYOffset(3)
+    effect.setColor(QColor(0, 0, 0, 45))
+    widget.setGraphicsEffect(effect)
 
 
 def source_color(value: str) -> str:

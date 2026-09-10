@@ -32,7 +32,14 @@ from PySide6.QtWidgets import (
 )
 
 from mcpack.gui.icon_loader import load_icon
-from mcpack.gui.theme import SOURCE_MODRINTH, chip_colors, icon_placeholder_bg, loader_color, source_color
+from mcpack.gui.theme import (
+    SOURCE_MODRINTH,
+    apply_card_shadow,
+    chip_colors,
+    icon_placeholder_bg,
+    loader_color,
+    source_color,
+)
 from mcpack.models import ModEntry, ModSourceType, Pack
 from mcpack.sources.base import SearchResult
 
@@ -92,10 +99,12 @@ def run_async(
 
 def _panel_group(title: str) -> tuple[QGroupBox, QVBoxLayout]:
     """Her paneli çerçeveli/başlıklı bir kutuya alır — düz üst üste widget
-    yığını yerine gerçek bir uygulama görünümü verir."""
+    yığını yerine gerçek bir uygulama görünümü verir (referans tasarımdaki
+    gibi hafif bir yükselti/gölge ile)."""
     box = QGroupBox(title)
     layout = QVBoxLayout(box)
     layout.setSpacing(8)
+    apply_card_shadow(box)
     return box, layout
 
 
@@ -116,6 +125,7 @@ def _mod_name_widget(mod: ModEntry, show_file_name: bool) -> QWidget:
     Kullanıcı "Dosya adlarını göster" işaretlerse, ad altına küçük/soluk
     şekilde gerçek dosya adı da eklenir."""
     container = QWidget()
+    container.setStyleSheet("background: transparent;")
     layout = QVBoxLayout(container)
     layout.setContentsMargins(4, 2, 4, 2)
     layout.setSpacing(0)
@@ -151,6 +161,7 @@ def _environment_label(client: str, server: str) -> str:
 
 def _env_badge_widget(client: str, server: str) -> QWidget:
     container = QWidget()
+    container.setStyleSheet("background: transparent;")
     layout = QHBoxLayout(container)
     layout.setContentsMargins(4, 2, 4, 2)
 
@@ -213,6 +224,7 @@ def _set_scaled_pixmap(label: QLabel, pixmap: QPixmap) -> None:
 class _PackCard(QWidget):
     def __init__(self, pack: Pack) -> None:
         super().__init__()
+        self.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(10)
@@ -514,6 +526,7 @@ class PackDetailPanel(QWidget):
 class _ModResultCard(QWidget):
     def __init__(self, result: SearchResult, *, already_added: bool = False) -> None:
         super().__init__()
+        self.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(10)

@@ -33,12 +33,12 @@ from PySide6.QtWidgets import (
 
 from mcpack.gui.icon_loader import load_icon
 from mcpack.gui.theme import (
-    STATUS_GOOD,
     apply_card_shadow,
     chip_colors,
     icon_placeholder_bg,
     loader_color,
     source_color,
+    status_good_color,
 )
 from mcpack.models import ModEntry, ModSourceType, Pack
 from mcpack.sources.base import SearchResult
@@ -576,7 +576,7 @@ class _ModResultCard(QWidget):
 
         self.added_badge = QLabel("✓ Pack'te")
         self.added_badge.setStyleSheet(
-            f"color: {STATUS_GOOD}; font-weight: 600; font-size: 11px;"
+            f"color: {status_good_color()}; font-weight: 600; font-size: 11px;"
         )
         self.added_badge.setVisible(already_added)
         title_row.addWidget(self.added_badge)

@@ -22,11 +22,6 @@ _CATEGORY_COLORS: dict[str, dict[str, str]] = {
     "neoforge": {"light": "#eb6834", "dark": "#d95926"},  # slot 2 turuncu
 }
 
-STATUS_GOOD = "#0ca30c"
-"""dataviz skill'in durum paleti — "başarılı/eklendi" gibi durum göstergeleri
-için, kategorik renklerden (ör. Modrinth yeşili) AYRI tutulur; aksi halde bir
-durum rengi yanlışlıkla bir kategoriyle karıştırılabilir."""
-
 DARK_PALETTE = {
     "accent": "#5b8def",
     "accent_dim": "#3d6bb3",
@@ -43,35 +38,47 @@ DARK_PALETTE = {
     "selected_bg": "#3d6bb3",
     "selected_text": "#ffffff",
     "on_accent_text": "#ffffff",
+    "disabled_text": "#6b6f76",
     "danger_text": "#d03b3b",  # dataviz skill durum paleti: critical (temalar arası sabit)
+    "status_good": "#0ca30c",  # dataviz skill durum paleti: good
+    "status_warning": "#f97316",
+    "accent_purple": "#9085e9",
+    "accent_cyan": "#22b8cf",
+    "accent_pink": "#e87ba4",
     "chip_bg": "#2f333a",
     "chip_text": "#cfd2d6",
     "icon_placeholder_bg": "#2b2d31",
 }
 
-# Kullanıcının referans aldığı tasarımdan (yumuşak büyük köşeler, dolgun
-# koyu seçim yerine hafif mavi tonlu seçim, panellerde gerçek yükselti/
-# gölge hissi) ilham alınarak Tailwind Slate tonlarıyla yeniden kuruldu.
+# color.md'deki kullanıcı spesifikasyonuna göre kuruldu (Primary Blue,
+# Surface/Card, Text Primary/Secondary vb. — tablodaki hex'lerle birebir).
+# Sadece açık tema için verildi, koyu tema kendi paletinde ayrı kalıyor.
 LIGHT_PALETTE = {
-    "accent": "#2563eb",
-    "accent_dim": "#1d4ed8",
-    "bg": "#eef1f5",
-    "panel_bg": "#ffffff",
-    "field_bg": "#ffffff",
-    "border": "#e1e5eb",
-    "text": "#1e2430",
-    "text_muted": "#6b7280",
-    "hover_bg": "#f4f6f9",
-    "alt_row_bg": "#f8f9fb",
-    "scrollbar_handle": "#cbd2d9",
-    "scrollbar_handle_hover": "#a8b0ba",
-    "selected_bg": "#e8f0fe",
-    "selected_text": "#1d4ed8",
+    "accent": "#2563eb",  # Primary Blue
+    "accent_dim": "#1d4ed8",  # Primary Blue'nun basılı/hover koyu adımı
+    "bg": "#ffffff",  # Background
+    "panel_bg": "#f8fafc",  # Surface / Card (kartlar, sidebar, paneller)
+    "field_bg": "#ffffff",  # input/tablo alanları beyaz kart üstünde
+    "border": "#e2e8f0",  # Border / Divider
+    "text": "#0f172a",  # Text Primary
+    "text_muted": "#64748b",  # Text Secondary
+    "hover_bg": "#f1f5f9",  # Hover / Subtle
+    "alt_row_bg": "#f8fafc",  # Surface / Card (zebra çizgisi de aynı ton)
+    "scrollbar_handle": "#cbd5e1",
+    "scrollbar_handle_hover": "#94a3b8",  # Disabled tonuyla aynı, hover'da belirginleşsin diye
+    "selected_bg": "#2563eb",  # "aktif menü Primary Blue arka plan + beyaz yazı"
+    "selected_text": "#ffffff",
     "on_accent_text": "#ffffff",
-    "danger_text": "#d03b3b",  # dataviz skill durum paleti: critical (temalar arası sabit)
-    "chip_bg": "#eef1f5",
-    "chip_text": "#374151",
-    "icon_placeholder_bg": "#eef1f5",
+    "disabled_text": "#94a3b8",  # Disabled
+    "danger_text": "#dc2626",  # Error / Danger Red
+    "status_good": "#16a34a",  # Accent Green — "Kurulu" durumu
+    "status_warning": "#f97316",  # Warning Orange
+    "accent_purple": "#7c3aed",  # Purple Accent — öne çıkan/kategori (henüz UI'de kullanılmıyor)
+    "accent_cyan": "#0891b2",  # Cyan / Info (henüz UI'de kullanılmıyor)
+    "accent_pink": "#db2777",  # Pink / Magenta — favori/popüler (henüz UI'de kullanılmıyor)
+    "chip_bg": "#f1f5f9",
+    "chip_text": "#334155",
+    "icon_placeholder_bg": "#f1f5f9",
 }
 
 
@@ -152,7 +159,7 @@ QPushButton:pressed {{
     color: {p['on_accent_text']};
 }}
 QPushButton:disabled {{
-    color: {p['text_muted']};
+    color: {p['disabled_text']};
     background-color: {p['field_bg']};
 }}
 
@@ -284,6 +291,13 @@ def chip_colors() -> tuple[str, str]:
 
 def icon_placeholder_bg() -> str:
     return PALETTES[_active_theme]["icon_placeholder_bg"]
+
+
+def status_good_color() -> str:
+    """"Başarılı/eklendi" gibi durum göstergeleri için — kategorik renklerden
+    (ör. Modrinth yeşili) AYRI tutulur, aksi halde bir durum rengi yanlışlıkla
+    bir kategoriyle karıştırılabilir."""
+    return PALETTES[_active_theme]["status_good"]
 
 
 def apply_card_shadow(widget) -> None:

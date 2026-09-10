@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 
 from mcpack.gui.icon_loader import load_icon
 from mcpack.gui.theme import (
-    SOURCE_MODRINTH,
+    STATUS_GOOD,
     apply_card_shadow,
     chip_colors,
     icon_placeholder_bg,
@@ -180,10 +180,27 @@ def _env_badge_widget(client: str, server: str) -> QWidget:
     return container
 
 
-def _colored_item(text: str, color_hex: str) -> QTableWidgetItem:
-    item = QTableWidgetItem(text)
-    item.setForeground(QColor(color_hex))
-    return item
+def _source_indicator_widget(source_value: str) -> QWidget:
+    """Kimliği (Modrinth/CurseForge) renkli METİNLE değil, yanındaki küçük
+    bir noktayla taşır — metin her zaman okunabilir mürekkep rengini kullanır
+    (dataviz skill kuralı: "text wears text tokens, never the series color";
+    ayrıca bazı kategori renkleri beyaz zeminde tek başına metin olarak
+    3:1 kontrastın altında kalıyor, nokta+etiket bu sorunu da çözer)."""
+    container = QWidget()
+    container.setStyleSheet("background: transparent;")
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(4, 2, 4, 2)
+    layout.setSpacing(6)
+
+    dot = QLabel()
+    dot.setFixedSize(8, 8)
+    dot.setStyleSheet(f"background-color: {source_color(source_value)}; border-radius: 4px;")
+    layout.addWidget(dot)
+
+    label = QLabel(_SOURCE_LABELS.get(source_value, source_value))
+    layout.addWidget(label)
+    layout.addStretch()
+    return container
 
 
 def _badge_label(text: str, color_hex: str, *, size: int = 36) -> QLabel:
@@ -490,8 +507,9 @@ class PackDetailPanel(QWidget):
             self.table.setItem(row, 0, name_item)
             self.table.setCellWidget(row, 0, _mod_name_widget(mod, show_file_names))
 
-            source_label = _SOURCE_LABELS.get(mod.source.value, mod.source.value)
-            self.table.setItem(row, 1, _colored_item(source_label, source_color(mod.source.value)))
+            source_item = QTableWidgetItem("")
+            self.table.setItem(row, 1, source_item)
+            self.table.setCellWidget(row, 1, _source_indicator_widget(mod.source.value))
 
             self.table.setCellWidget(row, 2, _env_badge_widget(mod.env.client.value, mod.env.server.value))
 
@@ -543,15 +561,22 @@ class _ModResultCard(QWidget):
         title.setStyleSheet("font-weight: 600; font-size: 13px;")
         title_row.addWidget(title)
 
-        source_badge = QLabel(_SOURCE_LABELS.get(result.source.value, result.source.value))
-        source_badge.setStyleSheet(
-            f"color: {source_color(result.source.value)}; font-weight: 600; font-size: 11px;"
+        # Kimlik rengi metinde değil küçük noktada (bkz. _source_indicator_widget
+        # docstring'i) — metin okunabilir mürekkep rengini kullanır.
+        source_dot = QLabel()
+        source_dot.setFixedSize(7, 7)
+        source_dot.setStyleSheet(
+            f"background-color: {source_color(result.source.value)}; border-radius: 3px;"
         )
-        title_row.addWidget(source_badge)
+        title_row.addWidget(source_dot)
+        source_label = QLabel(_SOURCE_LABELS.get(result.source.value, result.source.value))
+        source_label.setProperty("role", "muted")
+        source_label.setStyleSheet("font-size: 11px;")
+        title_row.addWidget(source_label)
 
         self.added_badge = QLabel("✓ Pack'te")
         self.added_badge.setStyleSheet(
-            f"color: {SOURCE_MODRINTH}; font-weight: 600; font-size: 11px;"
+            f"color: {STATUS_GOOD}; font-weight: 600; font-size: 11px;"
         )
         self.added_badge.setVisible(already_added)
         title_row.addWidget(self.added_badge)

@@ -93,6 +93,9 @@ class MainWindow(QMainWindow):
         pack_detail = getattr(self, "pack_detail", None)
         if pack_detail is not None:
             pack_detail.show_pack(self.current_pack)
+        pack_list = getattr(self, "pack_list", None)
+        if pack_list is not None:
+            pack_list.set_packs(self.manager.list_packs())
 
     def _build_toolbar(self) -> None:
         """Ayarlar eskiden sadece menü çubuğunda tek satırlık bir menüydü —

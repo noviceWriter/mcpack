@@ -3,14 +3,29 @@ kullanıcı isteğiyle açık tema da eklendi)."""
 
 from __future__ import annotations
 
-SOURCE_MODRINTH = "#1bd96a"
-SOURCE_CURSEFORGE = "#f16436"
+# Kategorik rozet renkleri (kaynak: Modrinth/CurseForge, loader: Fabric/Quilt/
+# Forge/NeoForge) — dataviz skill'inin doğrulanmış, CVD-güvenli 8 renkli
+# kategorik paletinden (references/palette.md) alındı: sabit sıra, mavi
+# (accent) ve kırmızı (danger/critical durum rengi) ile çakışmasın diye
+# atlandı. Modrinth/CurseForge kendi gerçek marka renklerine en yakın
+# slot'larla eşleşti (yeşil/turuncu). Kaynak ve loader rozetleri arayüzde
+# hiçbir zaman aynı anda/yan yana görünmediği için palet sırasını ikisi de
+# baştan kullanabildi; NeoForge'un CurseForge ile aynı turuncuyu paylaşması
+# bu yüzden çakışma yaratmıyor (ikisi de gerçek markasıyla örtüşüyor).
+_CATEGORY_COLORS: dict[str, dict[str, str]] = {
+    "modrinth": {"light": "#1baf7a", "dark": "#199e70"},  # slot 3 aqua/yeşil
+    "curseforge": {"light": "#eb6834", "dark": "#d95926"},  # slot 2 turuncu
+    "vanilla": {"light": "#6b7280", "dark": "#6b7280"},  # nötr gri — kategori değil, "loader yok" durumu
+    "fabric": {"light": "#eda100", "dark": "#c98500"},  # slot 4 sarı
+    "quilt": {"light": "#e87ba4", "dark": "#d55181"},  # slot 5 magenta
+    "forge": {"light": "#4a3aa7", "dark": "#9085e9"},  # slot 7 mor
+    "neoforge": {"light": "#eb6834", "dark": "#d95926"},  # slot 2 turuncu
+}
 
-LOADER_VANILLA = "#6b7280"
-LOADER_FABRIC = "#dbb86b"
-LOADER_QUILT = "#a855f7"
-LOADER_FORGE = "#4b6bdb"
-LOADER_NEOFORGE = "#f97316"
+STATUS_GOOD = "#0ca30c"
+"""dataviz skill'in durum paleti — "başarılı/eklendi" gibi durum göstergeleri
+için, kategorik renklerden (ör. Modrinth yeşili) AYRI tutulur; aksi halde bir
+durum rengi yanlışlıkla bir kategoriyle karıştırılabilir."""
 
 DARK_PALETTE = {
     "accent": "#5b8def",
@@ -28,7 +43,7 @@ DARK_PALETTE = {
     "selected_bg": "#3d6bb3",
     "selected_text": "#ffffff",
     "on_accent_text": "#ffffff",
-    "danger_text": "#ff9a9a",
+    "danger_text": "#d03b3b",  # dataviz skill durum paleti: critical (temalar arası sabit)
     "chip_bg": "#2f333a",
     "chip_text": "#cfd2d6",
     "icon_placeholder_bg": "#2b2d31",
@@ -53,7 +68,7 @@ LIGHT_PALETTE = {
     "selected_bg": "#e8f0fe",
     "selected_text": "#1d4ed8",
     "on_accent_text": "#ffffff",
-    "danger_text": "#dc2626",
+    "danger_text": "#d03b3b",  # dataviz skill durum paleti: critical (temalar arası sabit)
     "chip_bg": "#eef1f5",
     "chip_text": "#374151",
     "icon_placeholder_bg": "#eef1f5",
@@ -195,14 +210,6 @@ QLabel[role="muted"] {{
     color: {p['text_muted']};
     font-size: 12px;
 }}
-QLabel[role="badge-modrinth"] {{
-    color: {SOURCE_MODRINTH};
-    font-weight: 600;
-}}
-QLabel[role="badge-curseforge"] {{
-    color: {SOURCE_CURSEFORGE};
-    font-weight: 600;
-}}
 
 QMenuBar, QToolBar {{
     background-color: {p['panel_bg']};
@@ -294,15 +301,16 @@ def apply_card_shadow(widget) -> None:
     widget.setGraphicsEffect(effect)
 
 
+def _category_color(key: str) -> str:
+    step = _CATEGORY_COLORS.get(key)
+    if step is None:
+        return PALETTES[_active_theme]["text_muted"]
+    return step[_active_theme]
+
+
 def source_color(value: str) -> str:
-    return {"modrinth": SOURCE_MODRINTH, "curseforge": SOURCE_CURSEFORGE}.get(value, "#8a8d93")
+    return _category_color(value)
 
 
 def loader_color(value: str) -> str:
-    return {
-        "vanilla": LOADER_VANILLA,
-        "fabric": LOADER_FABRIC,
-        "quilt": LOADER_QUILT,
-        "forge": LOADER_FORGE,
-        "neoforge": LOADER_NEOFORGE,
-    }.get(value, LOADER_VANILLA)
+    return _category_color(value)

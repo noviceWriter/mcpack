@@ -5,11 +5,13 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -19,19 +21,38 @@ from PySide6.QtWidgets import (
 from mcpack.config import Settings
 
 
+def _section_label(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setProperty("role", "heading")
+    return label
+
+
 class SettingsDialog(QDialog):
     def __init__(self, settings: Settings, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Ayarlar")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(440)
         self._settings = settings
 
         form = QFormLayout()
 
+        form.addRow(_section_label("Görünüm"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("Koyu", "dark")
+        self.theme_combo.addItem("Açık", "light")
+        self.theme_combo.setCurrentIndex(self.theme_combo.findData(settings.theme))
+        form.addRow("Tema:", self.theme_combo)
+
+        form.addRow(_section_label("Mod Kaynakları"))
         self.cf_key_input = QLineEdit(settings.curseforge_api_key)
         self.cf_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("CurseForge API Key:", self.cf_key_input)
 
+        self.prefer_modrinth_checkbox = QCheckBox("Aynı mod iki kaynakta da varsa Modrinth'i tercih et")
+        self.prefer_modrinth_checkbox.setChecked(settings.prefer_modrinth)
+        form.addRow(self.prefer_modrinth_checkbox)
+
+        form.addRow(_section_label("SKLauncher"))
         sklauncher_row = QWidget()
         sklauncher_layout = QHBoxLayout(sklauncher_row)
         sklauncher_layout.setContentsMargins(0, 0, 0, 0)
@@ -40,12 +61,9 @@ class SettingsDialog(QDialog):
         browse_button = QPushButton("Gözat...")
         browse_button.clicked.connect(self._browse_sklauncher)
         sklauncher_layout.addWidget(browse_button)
-        form.addRow("SKLauncher Yolu:", sklauncher_row)
+        form.addRow("Portable Yol:", sklauncher_row)
 
-        self.prefer_modrinth_checkbox = QCheckBox("Aynı mod iki kaynakta da varsa Modrinth'i tercih et")
-        self.prefer_modrinth_checkbox.setChecked(settings.prefer_modrinth)
-        form.addRow(self.prefer_modrinth_checkbox)
-
+        form.addRow(_section_label("Export"))
         self.exclude_logs_checkbox = QCheckBox("Export'ta logs/ klasörünü hariç tut")
         self.exclude_logs_checkbox.setChecked(settings.exclude_logs)
         form.addRow(self.exclude_logs_checkbox)
@@ -74,6 +92,7 @@ class SettingsDialog(QDialog):
             self.sklauncher_input.setText(path)
 
     def apply_to(self, settings: Settings) -> None:
+        settings.theme = self.theme_combo.currentData()
         settings.curseforge_api_key = self.cf_key_input.text().strip()
         settings.sklauncher_path = self.sklauncher_input.text().strip()
         settings.prefer_modrinth = self.prefer_modrinth_checkbox.isChecked()

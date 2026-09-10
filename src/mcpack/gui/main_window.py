@@ -14,6 +14,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QInputDialog,
     QLabel,
@@ -21,7 +22,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QSplitter,
+    QToolBar,
+    QWidget,
 )
 
 from mcpack.config import Settings
@@ -31,6 +35,7 @@ from mcpack.gui.mod_search_dialog import ModSearchDialog
 from mcpack.gui.new_pack_dialog import NewPackDialog
 from mcpack.gui.recommended_mods_dialog import RecommendedModsDialog
 from mcpack.gui.settings_dialog import SettingsDialog
+from mcpack.gui.theme import stylesheet_for
 from mcpack.gui.widgets import PackDetailPanel, PackListPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
 from mcpack.models import EnvRequirement, Loader, ModSourceType, Pack
@@ -52,6 +57,7 @@ class MainWindow(QMainWindow):
         self.resize(1320, 820)
 
         self.settings = Settings.load()
+        self._apply_theme()
         self.manager = PackManager(self.settings.resolved_packs_dir())
         self.current_pack: Pack | None = None
         self._cancel_event: threading.Event | None = None
@@ -69,17 +75,33 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
 
-        self._build_menu()
+        self._build_toolbar()
         self._build_status_bar()
         self._wire_signals()
         self.reload_packs()
 
     # -- kurulum -----------------------------------------------------------
 
-    def _build_menu(self) -> None:
-        menu = self.menuBar().addMenu("Ayarlar")
-        action = menu.addAction("CurseForge API Key / SKLauncher Yolu")
-        action.triggered.connect(self.open_settings_dialog)
+    def _apply_theme(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(stylesheet_for(self.settings.theme))
+
+    def _build_toolbar(self) -> None:
+        """Ayarlar eskiden sadece menü çubuğunda tek satırlık bir menüydü —
+        kullanıcı isteğiyle her zaman görünen, belirgin bir araç çubuğu
+        butonuna taşındı (Prism Launcher'daki gibi)."""
+        toolbar = QToolBar("Ana")
+        toolbar.setMovable(False)
+        self.addToolBar(toolbar)
+
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+
+        settings_button = QPushButton("⚙ Ayarlar")
+        settings_button.clicked.connect(self.open_settings_dialog)
+        toolbar.addWidget(settings_button)
 
     def _build_status_bar(self) -> None:
         """Export/server pack/SKLauncher ilerlemesi burada gösterilir — CurseForge/
@@ -127,6 +149,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() == SettingsDialog.DialogCode.Accepted:
             dialog.apply_to(self.settings)
             self.settings.save()
+            self._apply_theme()  # tema değişmiş olabilir, yeniden başlatmadan uygula
 
     # -- pack listesi / detay ------------------------------------------------
 

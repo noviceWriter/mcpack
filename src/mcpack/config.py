@@ -44,6 +44,8 @@ class Settings(BaseModel):
     exclude_logs: bool = True
     exclude_crash_reports: bool = True
     exclude_saves: bool = True
+    theme: str = "dark"
+    """"dark" ya da "light" — bkz. gui/theme.py."""
 
     def resolved_packs_dir(self) -> Path:
         return Path(self.packs_dir) if self.packs_dir else default_packs_dir()

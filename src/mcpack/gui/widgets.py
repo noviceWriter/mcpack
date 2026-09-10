@@ -340,7 +340,19 @@ class PackDetailPanel(QWidget):
         outer.addLayout(header)
 
         table_options_row = QHBoxLayout()
-        table_options_row.addStretch()
+        self.mod_filter_input = QLineEdit()
+        self.mod_filter_input.setPlaceholderText("Yüklü modlarda ara...")
+        self.mod_filter_input.textChanged.connect(self._on_filter_or_sort_changed)
+        table_options_row.addWidget(self.mod_filter_input, 1)
+
+        self.mod_sort_combo = QComboBox()
+        self.mod_sort_combo.addItem("Sırala: Eklenme sırası", "default")
+        self.mod_sort_combo.addItem("Sırala: Ad (A-Z)", "name_asc")
+        self.mod_sort_combo.addItem("Sırala: Ad (Z-A)", "name_desc")
+        self.mod_sort_combo.addItem("Sırala: Kaynak", "source")
+        self.mod_sort_combo.currentIndexChanged.connect(self._on_filter_or_sort_changed)
+        table_options_row.addWidget(self.mod_sort_combo)
+
         self.show_file_names_checkbox = QCheckBox("Dosya adlarını göster")
         self.show_file_names_checkbox.toggled.connect(self._on_show_file_names_toggled)
         table_options_row.addWidget(self.show_file_names_checkbox)
@@ -384,6 +396,27 @@ class PackDetailPanel(QWidget):
         self.vanilla_notice.hide()
         outer.addWidget(self.vanilla_notice)
 
+    def _visible_mods(self, pack: Pack) -> list[ModEntry]:
+        mods = list(pack.mods)
+
+        query = self.mod_filter_input.text().strip().lower()
+        if query:
+            mods = [m for m in mods if query in (m.name or "").lower() or query in m.file_name.lower()]
+
+        sort_mode = self.mod_sort_combo.currentData()
+        if sort_mode == "name_asc":
+            mods.sort(key=lambda m: (m.name or m.file_name).lower())
+        elif sort_mode == "name_desc":
+            mods.sort(key=lambda m: (m.name or m.file_name).lower(), reverse=True)
+        elif sort_mode == "source":
+            mods.sort(key=lambda m: m.source.value)
+        # "default" -> pack.mods sırası (eklenme sırası) korunur
+
+        return mods
+
+    def _on_filter_or_sort_changed(self, *_args) -> None:
+        self.show_pack(self._current_pack)
+
     def show_pack(self, pack: Pack | None) -> None:
         self._current_pack = pack
         if pack is None:
@@ -392,6 +425,8 @@ class PackDetailPanel(QWidget):
             self.table.setRowCount(0)
             self.table.hide()
             self.mod_actions_bar.hide()
+            self.mod_filter_input.hide()
+            self.mod_sort_combo.hide()
             self.show_file_names_checkbox.hide()
             self.vanilla_notice.hide()
             return
@@ -408,6 +443,8 @@ class PackDetailPanel(QWidget):
         # ekleme/düzenleme araç çubuğu bu durumda tamamen gizlenir.
         self.table.setVisible(not is_vanilla)
         self.mod_actions_bar.setVisible(not is_vanilla)
+        self.mod_filter_input.setVisible(not is_vanilla)
+        self.mod_sort_combo.setVisible(not is_vanilla)
         self.show_file_names_checkbox.setVisible(not is_vanilla)
         self.vanilla_notice.setVisible(is_vanilla)
         if is_vanilla:
@@ -415,8 +452,9 @@ class PackDetailPanel(QWidget):
             return
 
         show_file_names = self.show_file_names_checkbox.isChecked()
-        self.table.setRowCount(len(pack.mods))
-        for row, mod in enumerate(pack.mods):
+        visible_mods = self._visible_mods(pack)
+        self.table.setRowCount(len(visible_mods))
+        for row, mod in enumerate(visible_mods):
             name_item = QTableWidgetItem("")
             name_item.setData(Qt.ItemDataRole.UserRole, mod.project_id)
             self.table.setItem(row, 0, name_item)

@@ -12,8 +12,6 @@ Eleme mantığı iki katmanlı:
 
 from __future__ import annotations
 
-import json
-import sys
 from pathlib import Path
 
 import httpx
@@ -26,24 +24,8 @@ from mcpack.export.base import (
     ensure_mods_downloaded,
     write_zip,
 )
+from mcpack.known_mods import load_known_client_only_slugs
 from mcpack.models import ModEntry, Pack
-
-
-def _data_dir() -> Path:
-    """PyInstaller ile paketlenmişse sys._MEIPASS altındaki data/ (bkz.
-    scripts/build.py --add-data), aksi halde kaynak kod deposundaki data/."""
-    frozen_base = getattr(sys, "_MEIPASS", None)
-    if frozen_base:
-        return Path(frozen_base) / "data"
-    return Path(__file__).resolve().parents[3] / "data"
-
-
-def load_known_client_only_slugs() -> set[str]:
-    path = _data_dir() / "client_only_mods.json"
-    if not path.exists():
-        return set()
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return {s.lower() for s in data.get("client_only_slugs", [])}
 
 
 def is_server_compatible(entry: ModEntry, known_client_only_slugs: set[str] | None = None) -> bool:

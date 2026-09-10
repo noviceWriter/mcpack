@@ -6,7 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mcpack.models import EnvRequirement, Loader, ModEntry, ModEnv, ModHashes, Pack
+from mcpack.known_mods import load_known_client_only_slugs
+from mcpack.models import EnvRequirement, Loader, ModEntry, ModEnv, ModHashes, ModSourceType, Pack
 from mcpack.packs import storage
 from mcpack.sources.base import ModDetail, ModSource, ModVersion
 
@@ -17,8 +18,17 @@ def _version_to_entry(version: ModVersion, detail: ModDetail | None) -> ModEntry
         raise ValueError(f"{version.name}: indirilebilir dosya bulunamadı")
 
     env = ModEnv()
-    if detail is not None:
+    if detail is not None and detail.source == ModSourceType.MODRINTH:
+        # Sadece Modrinth API'si client/server bilgisini güvenilir verir.
         env = ModEnv(client=detail.client_side, server=detail.server_side)
+    elif detail is not None:
+        # CurseForge gibi kaynaklar bu bilgiyi vermez; bilinen client-only
+        # listesiyle (data/client_only_mods.json) sezgisel eşleştir, yoksa
+        # güvenli varsayılan olarak ikisinde de gerekli say (kullanıcı
+        # "Client/Server Düzelt" ile elle düzeltebilir — proje-amacı.md §6).
+        known = load_known_client_only_slugs()
+        if detail.slug and detail.slug.lower() in known:
+            env = ModEnv(client=EnvRequirement.REQUIRED, server=EnvRequirement.UNSUPPORTED)
 
     return ModEntry(
         source=version.source,

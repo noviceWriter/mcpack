@@ -288,7 +288,9 @@ class PackDetailPanel(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         outer.addWidget(self.table, 1)
 
-        button_row = QHBoxLayout()
+        self.mod_actions_bar = QWidget()
+        button_row = QHBoxLayout(self.mod_actions_bar)
+        button_row.setContentsMargins(0, 0, 0, 0)
         add_button = QPushButton("+ Mod Ekle")
         add_button.setObjectName("primary")
         add_button.clicked.connect(self.add_mod_clicked.emit)
@@ -303,21 +305,43 @@ class PackDetailPanel(QWidget):
         env_button.clicked.connect(self._on_edit_env_clicked)
         button_row.addWidget(env_button)
         button_row.addStretch()
-        outer.addLayout(button_row)
+        outer.addWidget(self.mod_actions_bar)
+
+        self.vanilla_notice = QLabel(
+            "Vanilla pack'lerde mod eklenemez — mod eklemek için bir loader (Fabric/Quilt/Forge/NeoForge) seçin."
+        )
+        self.vanilla_notice.setProperty("role", "muted")
+        self.vanilla_notice.setWordWrap(True)
+        self.vanilla_notice.hide()
+        outer.addWidget(self.vanilla_notice)
 
     def show_pack(self, pack: Pack | None) -> None:
         if pack is None:
             self.title_label.setText("Pack seçilmedi")
             self.subtitle_label.setText("Soldan bir pack seçin ya da yeni oluşturun.")
             self.table.setRowCount(0)
+            self.table.hide()
+            self.mod_actions_bar.hide()
+            self.vanilla_notice.hide()
             return
 
-        loader_label = "Vanilla" if pack.loader.value == "vanilla" else pack.loader.value.capitalize()
+        is_vanilla = pack.loader.value == "vanilla"
+        loader_label = "Vanilla" if is_vanilla else pack.loader.value.capitalize()
         loader_version = f" {pack.loader_version}" if pack.loader_version else ""
         self.title_label.setText(pack.name)
         self.subtitle_label.setText(
             f"{loader_label}{loader_version}  ·  MC {pack.minecraft}  ·  {len(pack.mods)} mod"
         )
+
+        # Vanilla pack'lere mod eklenemez (loader yok) — mod tablosu ve
+        # ekleme/düzenleme araç çubuğu bu durumda tamamen gizlenir.
+        self.table.setVisible(not is_vanilla)
+        self.mod_actions_bar.setVisible(not is_vanilla)
+        self.vanilla_notice.setVisible(is_vanilla)
+        if is_vanilla:
+            self.table.setRowCount(0)
+            return
+
         self.table.setRowCount(len(pack.mods))
         for row, mod in enumerate(pack.mods):
             name_item = QTableWidgetItem(mod.file_name)

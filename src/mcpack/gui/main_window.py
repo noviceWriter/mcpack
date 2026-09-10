@@ -32,7 +32,7 @@ from mcpack.gui.new_pack_dialog import NewPackDialog
 from mcpack.gui.settings_dialog import SettingsDialog
 from mcpack.gui.widgets import PackDetailPanel, PackListPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
-from mcpack.models import EnvRequirement, ModSourceType, Pack
+from mcpack.models import EnvRequirement, Loader, ModSourceType, Pack
 from mcpack.packs import PackManager
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
 from mcpack.sources.base import SearchResult
@@ -200,6 +200,9 @@ class MainWindow(QMainWindow):
     def open_mod_search_dialog(self) -> None:
         if not self.current_pack:
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
+            return
+        if self.current_pack.loader == Loader.VANILLA:
+            QMessageBox.information(self, "Bilgi", "Vanilla pack'lere mod eklenemez.")
             return
 
         if self._mod_search_dialog is not None:

@@ -37,48 +37,59 @@ DARK_PALETTE = {
     "scrollbar_handle_hover": "#4a4d54",
     "selected_bg": "#3d6bb3",
     "selected_text": "#ffffff",
+    "selected_stripe": "#5b8def",
     "on_accent_text": "#ffffff",
     "disabled_text": "#6b6f76",
     "danger_text": "#d03b3b",  # dataviz skill durum paleti: critical (temalar arası sabit)
     "status_good": "#0ca30c",  # dataviz skill durum paleti: good
     "status_warning": "#f97316",
+    "warning_box_bg": "#3f2d0a",
+    "warning_box_text": "#fbbf24",
     "accent_purple": "#9085e9",
     "accent_cyan": "#22b8cf",
     "accent_pink": "#e87ba4",
+    "button_border": "#34363b",
+    "button_hover_border": "#4a4d54",
     "chip_bg": "#2f333a",
     "chip_text": "#cfd2d6",
     "icon_placeholder_bg": "#2b2d31",
 }
 
-# color.md'deki kullanıcı spesifikasyonuna göre kuruldu (Primary Blue,
-# Surface/Card, Text Primary/Secondary vb. — tablodaki hex'lerle birebir).
+# düzeltme1.md'deki kullanıcı geri bildirimine göre kuruldu: solid koyu
+# lacivert seçim "çok sert kontrast" bulundu, yerine yumuşak mavi ton +
+# sol kenar şeridi istendi; ayrıca buton/uyarı kutusu renkleri netleştirildi.
 # Sadece açık tema için verildi, koyu tema kendi paletinde ayrı kalıyor.
 LIGHT_PALETTE = {
-    "accent": "#2563eb",  # Primary Blue
-    "accent_dim": "#1d4ed8",  # Primary Blue'nun basılı/hover koyu adımı
-    "bg": "#ffffff",  # Background
-    "panel_bg": "#f8fafc",  # Surface / Card (kartlar, sidebar, paneller)
-    "field_bg": "#ffffff",  # input/tablo alanları beyaz kart üstünde
-    "border": "#e2e8f0",  # Border / Divider
-    "text": "#0f172a",  # Text Primary
-    "text_muted": "#64748b",  # Text Secondary
-    "hover_bg": "#f1f5f9",  # Hover / Subtle
-    "alt_row_bg": "#f8fafc",  # Surface / Card (zebra çizgisi de aynı ton)
-    "scrollbar_handle": "#cbd5e1",
-    "scrollbar_handle_hover": "#94a3b8",  # Disabled tonuyla aynı, hover'da belirginleşsin diye
-    "selected_bg": "#2563eb",  # "aktif menü Primary Blue arka plan + beyaz yazı"
-    "selected_text": "#ffffff",
+    "accent": "#3b82f6",  # Canlı Mavi — birincil buton arka planı
+    "accent_dim": "#2563eb",  # birincil buton hover'ı / seçili öğe sol şeridi ile aynı aile
+    "bg": "#f8f9fa",  # Ana arka plan (Body) — saf beyaz göz yorar
+    "panel_bg": "#ffffff",  # Kart/Panel arka planı
+    "field_bg": "#ffffff",
+    "border": "#e5e7eb",
+    "text": "#1f2937",  # Koyu Antrasit — saf siyah yerine
+    "text_muted": "#6b7280",  # İkincil metin
+    "hover_bg": "#f3f4f6",
+    "alt_row_bg": "#f9fafb",
+    "scrollbar_handle": "#d1d5db",
+    "scrollbar_handle_hover": "#9ca3af",
+    "selected_bg": "#eff6ff",  # Seçili öğe — çok açık, yumuşak mavi (solid lacivert DEĞİL)
+    "selected_text": "#1d4ed8",  # Koyu mavi, okunaklı
+    "selected_stripe": "#3b82f6",  # Seçili öğenin sol kenarındaki 4px şerit
     "on_accent_text": "#ffffff",
-    "disabled_text": "#94a3b8",  # Disabled
-    "danger_text": "#dc2626",  # Error / Danger Red
-    "status_good": "#16a34a",  # Accent Green — "Kurulu" durumu
-    "status_warning": "#f97316",  # Warning Orange
-    "accent_purple": "#7c3aed",  # Purple Accent — öne çıkan/kategori (henüz UI'de kullanılmıyor)
-    "accent_cyan": "#0891b2",  # Cyan / Info (henüz UI'de kullanılmıyor)
-    "accent_pink": "#db2777",  # Pink / Magenta — favori/popüler (henüz UI'de kullanılmıyor)
-    "chip_bg": "#f1f5f9",
-    "chip_text": "#334155",
-    "icon_placeholder_bg": "#f1f5f9",
+    "disabled_text": "#9ca3af",
+    "danger_text": "#ef4444",  # Tehlike/İptal metni
+    "status_good": "#16a34a",
+    "status_warning": "#f97316",
+    "warning_box_bg": "#fef3c7",  # Uyarı/bilgi kutusu (ör. "Vanilla pack'lerde mod eklenemez")
+    "warning_box_text": "#92400e",
+    "accent_purple": "#7c3aed",  # henüz UI'de kullanılmıyor (öne çıkan/kategori)
+    "accent_cyan": "#0891b2",  # henüz UI'de kullanılmıyor (info/tooltip)
+    "accent_pink": "#db2777",  # henüz UI'de kullanılmıyor (favori/popüler)
+    "button_border": "#d1d5db",  # ikincil buton kenarlığı (genel border'dan biraz daha belirgin)
+    "button_hover_border": "#9ca3af",
+    "chip_bg": "#f3f4f6",
+    "chip_text": "#374151",
+    "icon_placeholder_bg": "#f3f4f6",
 }
 
 
@@ -128,7 +139,17 @@ QListWidget::item, QTableWidget::item {{
     border: none;
     border-radius: 6px;
 }}
-QListWidget::item:selected, QTableWidget::item:selected {{
+QListWidget::item {{
+    border-left: 4px solid transparent;
+}}
+QListWidget::item:selected {{
+    background-color: {p['selected_bg']};
+    color: {p['selected_text']};
+    border-left: 4px solid {p['selected_stripe']};
+    border-top-left-radius: 0px;
+    border-bottom-left-radius: 0px;
+}}
+QTableWidget::item:selected {{
     background-color: {p['selected_bg']};
     color: {p['selected_text']};
 }}
@@ -146,17 +167,18 @@ QTableWidget::item {{
 
 QPushButton {{
     background-color: {p['field_bg']};
-    border: 1px solid {p['border']};
+    border: 1px solid {p['button_border']};
     border-radius: 9px;
     padding: 7px 16px;
 }}
 QPushButton:hover {{
     background-color: {p['hover_bg']};
-    border: 1px solid {p['accent_dim']};
+    border: 1px solid {p['button_hover_border']};
 }}
 QPushButton:pressed {{
     background-color: {p['accent_dim']};
     color: {p['on_accent_text']};
+    border: 1px solid {p['accent_dim']};
 }}
 QPushButton:disabled {{
     color: {p['disabled_text']};
@@ -216,6 +238,12 @@ QLabel[role="heading"] {{
 QLabel[role="muted"] {{
     color: {p['text_muted']};
     font-size: 12px;
+}}
+QLabel#warningBox {{
+    background-color: {p['warning_box_bg']};
+    color: {p['warning_box_text']};
+    border-radius: 8px;
+    padding: 10px 12px;
 }}
 
 QMenuBar, QToolBar {{

@@ -429,10 +429,11 @@ class PackDetailPanel(QWidget):
         self.vanilla_notice = QLabel(
             "Vanilla pack'lerde mod eklenemez — mod eklemek için bir loader (Fabric/Quilt/Forge/NeoForge) seçin."
         )
-        self.vanilla_notice.setProperty("role", "muted")
+        self.vanilla_notice.setObjectName("warningBox")
         self.vanilla_notice.setWordWrap(True)
         self.vanilla_notice.hide()
         outer.addWidget(self.vanilla_notice)
+        outer.addStretch()  # uyarı kutusu dikey boşluğu doldurup dev bir bloğa dönüşmesin
 
     def _visible_mods(self, pack: Pack) -> list[ModEntry]:
         mods = list(pack.mods)

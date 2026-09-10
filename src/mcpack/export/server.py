@@ -25,13 +25,20 @@ from mcpack.export.base import (
     write_zip,
 )
 from mcpack.known_mods import load_known_client_only_slugs
-from mcpack.models import ModEntry, Pack
+from mcpack.models import ModEntry, ModSourceType, Pack
 
 
 def is_server_compatible(entry: ModEntry, known_client_only_slugs: set[str] | None = None) -> bool:
     """Bir modun server pack'te kalıp kalmayacağına karar verir."""
     if entry.env.server.value == "unsupported":
         return False
+
+    # Modrinth API'si zaten gerçek env bilgisi veriyor — bilinen sezgisel
+    # listeyle bunun üzerine yazmıyoruz. Aksi halde örn. JEI (gerçekte
+    # server: optional) sırf bizim listemizde "client-only" varsayımıyla
+    # yer aldığı için yanlışlıkla server pack'ten elenirdi.
+    if entry.source == ModSourceType.MODRINTH:
+        return True
 
     known = known_client_only_slugs if known_client_only_slugs is not None else load_known_client_only_slugs()
     if entry.slug and entry.slug.lower() in known:

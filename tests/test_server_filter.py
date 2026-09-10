@@ -2,9 +2,16 @@ from mcpack.export.server import filter_server_mods, is_server_compatible
 from mcpack.models import EnvRequirement, Loader, ModEntry, ModEnv, ModHashes, ModSourceType, Pack
 
 
-def _entry(project_id: str, *, slug: str | None = None, server=EnvRequirement.REQUIRED, file_name=None) -> ModEntry:
+def _entry(
+    project_id: str,
+    *,
+    slug: str | None = None,
+    server=EnvRequirement.REQUIRED,
+    file_name=None,
+    source=ModSourceType.MODRINTH,
+) -> ModEntry:
     return ModEntry(
-        source=ModSourceType.MODRINTH,
+        source=source,
         project_id=project_id,
         slug=slug,
         version_id="v1",
@@ -26,8 +33,17 @@ def test_both_side_mod_is_included():
 
 
 def test_known_slug_fallback_excludes_curseforge_mod_without_env():
-    entry = _entry("123456", slug="iris", server=EnvRequirement.REQUIRED)
+    entry = _entry("123456", slug="iris", server=EnvRequirement.REQUIRED, source=ModSourceType.CURSEFORGE)
     assert is_server_compatible(entry, known_client_only_slugs={"iris"}) is False
+
+
+def test_modrinth_real_data_overrides_known_slug_fallback():
+    """Regresyon: JEI bizim data/client_only_mods.json listemizde "client-only"
+    varsayımıyla yer alıyor, ama Modrinth'in gerçek verisi server:optional
+    diyorsa (yani server'la uyumlu) buna güvenilmeli — sezgisel liste
+    Modrinth kaynaklı modlarda asla ezmemeli (bkz. export/server.py)."""
+    entry = _entry("jei-project", slug="jei", server=EnvRequirement.OPTIONAL, source=ModSourceType.MODRINTH)
+    assert is_server_compatible(entry, known_client_only_slugs={"jei"}) is True
 
 
 def test_filter_server_mods_on_pack():
@@ -35,7 +51,7 @@ def test_filter_server_mods_on_pack():
     pack.mods = [
         _entry("fabric-api"),
         _entry("sodium", server=EnvRequirement.UNSUPPORTED),
-        _entry("999", slug="modmenu"),
+        _entry("999", slug="modmenu", source=ModSourceType.CURSEFORGE),
     ]
     result = filter_server_mods(pack, known_client_only_slugs={"modmenu"})
     assert [m.project_id for m in result] == ["fabric-api"]

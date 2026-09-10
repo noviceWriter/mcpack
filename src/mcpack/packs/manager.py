@@ -34,6 +34,7 @@ def _version_to_entry(version: ModVersion, detail: ModDetail | None) -> ModEntry
         source=version.source,
         project_id=version.project_id,
         slug=detail.slug if detail is not None else None,
+        name=detail.title if detail is not None else None,
         version_id=version.version_id,
         file_name=file.file_name,
         file_size=file.size,

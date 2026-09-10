@@ -64,6 +64,9 @@ class ModEntry(BaseModel):
     project_id: str
     slug: str | None = None
     """Bilinen client-only listesiyle eşleştirme için (bkz. export/server.py)."""
+    name: str | None = None
+    """Modun kullanıcı dostu adı (ör. "Just Enough Items (JEI)") — sadece
+    UI'de gösterim için, export'ta hâlâ file_name kullanılır."""
     version_id: str
     file_name: str
     file_size: int | None = None

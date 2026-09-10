@@ -15,6 +15,7 @@ from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -32,7 +33,7 @@ from PySide6.QtWidgets import (
 
 from mcpack.gui.icon_loader import load_icon
 from mcpack.gui.theme import loader_color, source_color
-from mcpack.models import ModSourceType, Pack
+from mcpack.models import ModEntry, ModSourceType, Pack
 from mcpack.sources.base import SearchResult
 
 # ---------------------------------------------------------------------------
@@ -109,39 +110,60 @@ def format_downloads(n: int) -> str:
 _SOURCE_LABELS = {"modrinth": "Modrinth", "curseforge": "CurseForge"}
 
 
-def _supported_environments(client: str, server: str) -> list[str]:
-    """Modrinth'in mod sayfasındaki "Supported environments" rozetleriyle
-    birebir aynı mantık: client/server'ın required/optional/unsupported
-    kombinasyonundan hangi kurulum şekillerinin (sadece istemci, sadece
-    sunucu, ikisi birden) geçerli olduğunu çıkarır."""
-    labels = []
-    if client != "unsupported" and server != "required":
-        labels.append("İstemci")
-    if server != "unsupported" and client != "required":
-        labels.append("Sunucu")
-    if client != "unsupported" and server != "unsupported":
-        labels.append("İstemci + Sunucu")
-    return labels
+def _mod_name_widget(mod: ModEntry, show_file_name: bool) -> QWidget:
+    """Varsayılan olarak modun kullanıcı dostu adını gösterir (mod.name);
+    yoksa (eski kayıtlar / detay alınamamış modlar için) dosya adına düşer.
+    Kullanıcı "Dosya adlarını göster" işaretlerse, ad altına küçük/soluk
+    şekilde gerçek dosya adı da eklenir."""
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    layout.setContentsMargins(4, 2, 4, 2)
+    layout.setSpacing(0)
+
+    display_name = mod.name or mod.file_name
+    name_label = QLabel(display_name)
+    layout.addWidget(name_label)
+
+    if show_file_name and mod.name:
+        file_label = QLabel(mod.file_name)
+        file_label.setProperty("role", "muted")
+        file_label.setStyleSheet("font-size: 11px;")
+        layout.addWidget(file_label)
+
+    return container
 
 
-def _env_badges_widget(client: str, server: str) -> QWidget:
+def _environment_label(client: str, server: str) -> str:
+    """Tek, birleşik ortam etiketi: sadece istemci ya da sadece sunucu ile
+    çalışabiliyorsa ayrı ayrı gösterilir; ikisiyle de çalışıyorsa (client
+    ve server ikisi de unsupported değilse) tek bir "İstemci + Sunucu"
+    etiketi yeterli — ayrı ayrı üç rozet göstermek yerine."""
+    client_ok = client != "unsupported"
+    server_ok = server != "unsupported"
+    if client_ok and server_ok:
+        return "İstemci + Sunucu"
+    if client_ok:
+        return "İstemci"
+    if server_ok:
+        return "Sunucu"
+    return "Bilinmiyor"
+
+
+def _env_badge_widget(client: str, server: str) -> QWidget:
     container = QWidget()
     layout = QHBoxLayout(container)
     layout.setContentsMargins(4, 2, 4, 2)
-    layout.setSpacing(4)
 
-    labels = _supported_environments(client, server)
-    if not labels:
-        chip = QLabel("Bilinmiyor")
+    text = _environment_label(client, server)
+    chip = QLabel(text)
+    if text == "Bilinmiyor":
         chip.setProperty("role", "muted")
-        layout.addWidget(chip)
-    for text in labels:
-        chip = QLabel(text)
+    else:
         chip.setStyleSheet(
             "background-color: #2f333a; color: #cfd2d6; border-radius: 4px; "
             "padding: 2px 8px; font-size: 11px;"
         )
-        layout.addWidget(chip)
+    layout.addWidget(chip)
     layout.addStretch()
     return container
 
@@ -276,6 +298,8 @@ class PackDetailPanel(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self._current_pack: Pack | None = None
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(20, 16, 20, 16)
         outer.setSpacing(12)
@@ -314,6 +338,13 @@ class PackDetailPanel(QWidget):
         header.addWidget(sklauncher_button)
 
         outer.addLayout(header)
+
+        table_options_row = QHBoxLayout()
+        table_options_row.addStretch()
+        self.show_file_names_checkbox = QCheckBox("Dosya adlarını göster")
+        self.show_file_names_checkbox.toggled.connect(self._on_show_file_names_toggled)
+        table_options_row.addWidget(self.show_file_names_checkbox)
+        outer.addLayout(table_options_row)
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Mod", "Kaynak", "Ortam"])
@@ -354,12 +385,14 @@ class PackDetailPanel(QWidget):
         outer.addWidget(self.vanilla_notice)
 
     def show_pack(self, pack: Pack | None) -> None:
+        self._current_pack = pack
         if pack is None:
             self.title_label.setText("Pack seçilmedi")
             self.subtitle_label.setText("Soldan bir pack seçin ya da yeni oluşturun.")
             self.table.setRowCount(0)
             self.table.hide()
             self.mod_actions_bar.hide()
+            self.show_file_names_checkbox.hide()
             self.vanilla_notice.hide()
             return
 
@@ -375,21 +408,29 @@ class PackDetailPanel(QWidget):
         # ekleme/düzenleme araç çubuğu bu durumda tamamen gizlenir.
         self.table.setVisible(not is_vanilla)
         self.mod_actions_bar.setVisible(not is_vanilla)
+        self.show_file_names_checkbox.setVisible(not is_vanilla)
         self.vanilla_notice.setVisible(is_vanilla)
         if is_vanilla:
             self.table.setRowCount(0)
             return
 
+        show_file_names = self.show_file_names_checkbox.isChecked()
         self.table.setRowCount(len(pack.mods))
         for row, mod in enumerate(pack.mods):
-            name_item = QTableWidgetItem(mod.file_name)
+            name_item = QTableWidgetItem("")
             name_item.setData(Qt.ItemDataRole.UserRole, mod.project_id)
             self.table.setItem(row, 0, name_item)
+            self.table.setCellWidget(row, 0, _mod_name_widget(mod, show_file_names))
 
             source_label = _SOURCE_LABELS.get(mod.source.value, mod.source.value)
             self.table.setItem(row, 1, _colored_item(source_label, source_color(mod.source.value)))
 
-            self.table.setCellWidget(row, 2, _env_badges_widget(mod.env.client.value, mod.env.server.value))
+            self.table.setCellWidget(row, 2, _env_badge_widget(mod.env.client.value, mod.env.server.value))
+
+        self.table.resizeRowsToContents()
+
+    def _on_show_file_names_toggled(self, _checked: bool) -> None:
+        self.show_pack(self._current_pack)
 
     def _on_remove_clicked(self) -> None:
         row = self.table.currentRow()

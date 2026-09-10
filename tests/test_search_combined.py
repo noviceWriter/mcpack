@@ -10,7 +10,7 @@ class _FakeSource:
         self.source = source
         self._results = results
 
-    async def search(self, query, *, game_version=None, loader=None, limit=20):
+    async def search(self, query, *, game_version=None, loader=None, limit=20, offset=0):
         return self._results
 
 

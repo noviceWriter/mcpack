@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from mcpack.gui.icon_loader import load_icon
-from mcpack.gui.theme import loader_color, source_color
+from mcpack.gui.theme import SOURCE_MODRINTH, loader_color, source_color
 from mcpack.models import ModEntry, ModSourceType, Pack
 from mcpack.sources.base import SearchResult
 
@@ -456,7 +456,7 @@ class PackDetailPanel(QWidget):
 
 
 class _ModResultCard(QWidget):
-    def __init__(self, result: SearchResult) -> None:
+    def __init__(self, result: SearchResult, *, already_added: bool = False) -> None:
         super().__init__()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -479,6 +479,13 @@ class _ModResultCard(QWidget):
             f"color: {source_color(result.source.value)}; font-weight: 600; font-size: 11px;"
         )
         title_row.addWidget(source_badge)
+
+        self.added_badge = QLabel("✓ Pack'te")
+        self.added_badge.setStyleSheet(
+            f"color: {SOURCE_MODRINTH}; font-weight: 600; font-size: 11px;"
+        )
+        self.added_badge.setVisible(already_added)
+        title_row.addWidget(self.added_badge)
         title_row.addStretch()
 
         downloads = QLabel(f"⬇ {format_downloads(result.downloads)}")
@@ -498,14 +505,23 @@ class _ModResultCard(QWidget):
         if result.icon_url:
             load_icon(result.icon_url, lambda pixmap: _set_scaled_pixmap(self.icon_label, pixmap))
 
+    def set_already_added(self, added: bool) -> None:
+        self.added_badge.setVisible(added)
+
 
 class SearchPanel(QWidget):
-    search_requested = Signal(str, str)  # query, source
+    search_requested = Signal(str, str, int)  # query, source, offset
     add_mod_requested = Signal(object)  # SearchResult
+
+    PAGE_SIZE = 20
 
     def __init__(self) -> None:
         super().__init__()
         self._results: list[SearchResult] = []
+        self._cards: list[_ModResultCard] = []
+        self._added_project_ids: set[str] = set()
+        self._has_more = True
+        self._loading_more = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -534,6 +550,9 @@ class SearchPanel(QWidget):
         self.results_list = QListWidget()
         self.results_list.setSpacing(2)
         self.results_list.itemDoubleClicked.connect(self._on_add_clicked)
+        # Sonsuz kaydırma: listenin sonuna yaklaşınca bir sonraki sayfayı iste
+        # (CurseForge/Modrinth App'te olduğu gibi 20 sonuçla sınırlı kalmasın).
+        self.results_list.verticalScrollBar().valueChanged.connect(self._on_scroll)
         layout.addWidget(self.results_list)
 
         add_button = QPushButton("Seçili Modu Pack'e Ekle")
@@ -543,18 +562,45 @@ class SearchPanel(QWidget):
     def _on_search_clicked(self) -> None:
         # Boş sorgu da geçerli: CurseForge/Modrinth App'te olduğu gibi
         # popüler modları (indirme sayısına göre) listeler.
+        self._has_more = True
         query = self.query_input.text().strip()
-        self.search_requested.emit(query, self.source_combo.currentData())
+        self.search_requested.emit(query, self.source_combo.currentData(), 0)
 
-    def set_results(self, results: list[SearchResult]) -> None:
-        self._results = results
-        self.results_list.clear()
+    def _on_scroll(self, value: int) -> None:
+        if not self._has_more or self._loading_more:
+            return
+        bar = self.results_list.verticalScrollBar()
+        if value < bar.maximum() - 4:
+            return
+        self._loading_more = True
+        query = self.query_input.text().strip()
+        self.search_requested.emit(query, self.source_combo.currentData(), len(self._results))
+
+    def set_results(self, results: list[SearchResult], *, append: bool = False) -> None:
+        self._loading_more = False
+        if len(results) < self.PAGE_SIZE:
+            self._has_more = False
+
+        if not append:
+            self._results = []
+            self._cards = []
+            self.results_list.clear()
+
         for r in results:
             item = QListWidgetItem()
-            card = _ModResultCard(r)
+            card = _ModResultCard(r, already_added=r.project_id in self._added_project_ids)
             item.setSizeHint(card.sizeHint())
             self.results_list.addItem(item)
             self.results_list.setItemWidget(item, card)
+            self._cards.append(card)
+        self._results.extend(results)
+
+    def set_added_project_ids(self, ids: set[str]) -> None:
+        """Pack'te zaten olan modları listede "✓ Pack'te" ile işaretler —
+        kullanıcı aynı modu yanlışlıkla tekrar eklemeye çalışmasın diye."""
+        self._added_project_ids = ids
+        for card, result in zip(self._cards, self._results):
+            card.set_already_added(result.project_id in ids)
 
     def _on_add_clicked(self) -> None:
         row = self.results_list.currentRow()

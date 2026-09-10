@@ -215,18 +215,19 @@ class MainWindow(QMainWindow):
         dialog.search_panel.search_requested.connect(self.do_search)
         dialog.search_panel.add_mod_requested.connect(self.add_mod)
         dialog.finished.connect(self._on_mod_search_dialog_closed)
+        dialog.search_panel.set_added_project_ids({m.project_id for m in self.current_pack.mods})
         self._mod_search_dialog = dialog
         dialog.show()
 
         # CurseForge/Modrinth App gibi: pencere açılır açılmaz, arama
         # yazılmasını beklemeden popüler modları listele (indirme sayısına
         # göre sıralı gelir — boş sorgu Modrinth/CurseForge'ta geçerlidir).
-        self.do_search("", dialog.search_panel.source_combo.currentData())
+        self.do_search("", dialog.search_panel.source_combo.currentData(), 0)
 
     def _on_mod_search_dialog_closed(self) -> None:
         self._mod_search_dialog = None
 
-    def do_search(self, query: str, source_name: str) -> None:
+    def do_search(self, query: str, source_name: str, offset: int = 0) -> None:
         if not self.current_pack:
             return
         pack = self.current_pack
@@ -246,6 +247,7 @@ class MainWindow(QMainWindow):
                         curseforge=curseforge,
                         game_version=pack.minecraft,
                         loader=pack.loader,
+                        offset=offset,
                         prefer_modrinth=self.settings.prefer_modrinth,
                     )
                 finally:
@@ -255,22 +257,35 @@ class MainWindow(QMainWindow):
 
             source = self._make_source(source_name)
             try:
-                return await source.search(query, game_version=pack.minecraft, loader=pack.loader)
+                return await source.search(
+                    query, game_version=pack.minecraft, loader=pack.loader, offset=offset
+                )
             finally:
                 await source.aclose()
 
-        self.set_status("Aranıyor...")
-        run_async(task, on_success=self._on_search_done, on_error=self._on_error)
+        self.set_status("Aranıyor..." if offset == 0 else "Daha fazla yükleniyor...")
+        run_async(
+            task,
+            on_success=lambda results: self._on_search_done(results, append=offset > 0),
+            on_error=self._on_error,
+        )
 
-    def _on_search_done(self, results: list[SearchResult]) -> None:
+    def _on_search_done(self, results: list[SearchResult], *, append: bool) -> None:
         if self._mod_search_dialog is not None:
-            self._mod_search_dialog.search_panel.set_results(results)
+            self._mod_search_dialog.search_panel.set_results(results, append=append)
         self.set_status("Hazır")
 
     def add_mod(self, result: SearchResult) -> None:
         if not self.current_pack:
             return
         pack = self.current_pack
+
+        if pack.find_mod(result.project_id) is not None:
+            # Aynı mod tekrar kurulmasın — kullanıcı zaten eklenmiş olanı
+            # işaretli görüyor (bkz. SearchPanel.set_added_project_ids),
+            # yine de tıklarsa burada sessizce engelleniyor.
+            self.set_status(f"{result.title} zaten pack'te.")
+            return
 
         async def task() -> list[tuple]:
             source = self._make_source(result.source.value)
@@ -307,6 +322,7 @@ class MainWindow(QMainWindow):
     def _on_mod_added(self, suggestions: list[tuple[ModVersion, ModDetail]]) -> None:
         self.pack_detail.show_pack(self.current_pack)
         self.set_status("Mod eklendi")
+        self._refresh_added_markers()
 
         if not suggestions or not self.current_pack:
             return
@@ -315,6 +331,15 @@ class MainWindow(QMainWindow):
             for version, detail in dialog.selected():
                 self.manager.add_mod(self.current_pack, version, detail)
             self.pack_detail.show_pack(self.current_pack)
+            self._refresh_added_markers()
+
+    def _refresh_added_markers(self) -> None:
+        """Mod Ekle penceresi açıksa, az önce eklenen mod(lar) oradaki
+        listede de anında "Eklendi" olarak işaretlensin."""
+        if self._mod_search_dialog is not None and self.current_pack is not None:
+            self._mod_search_dialog.search_panel.set_added_project_ids(
+                {m.project_id for m in self.current_pack.mods}
+            )
 
     # -- export / server pack / sklauncher -----------------------------------
 

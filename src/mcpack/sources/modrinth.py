@@ -69,6 +69,7 @@ class ModrinthClient(ModSource):
         game_version: str | None = None,
         loader: Loader | None = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> list[SearchResult]:
         facets: list[list[str]] = [["project_type:mod"]]
         if game_version:
@@ -79,6 +80,7 @@ class ModrinthClient(ModSource):
         params = {
             "query": query,
             "limit": limit,
+            "offset": offset,
             "facets": json.dumps(facets),
         }
         response = await self._get("/search", params=params)

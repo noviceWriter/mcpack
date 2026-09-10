@@ -28,6 +28,7 @@ async def search_all(
     game_version: str | None = None,
     loader: Loader | None = None,
     limit: int = 20,
+    offset: int = 0,
     prefer_modrinth: bool = True,
 ) -> list[SearchResult]:
     """İki kaynakta paralel arar, çakışan modlarda `prefer_modrinth`'e göre
@@ -36,10 +37,10 @@ async def search_all(
     Bir kaynak hata verirse (örn. CF anahtarı geçersiz/engelli) o kaynak
     sessizce atlanır — ikisi de başarısız olursa hata yükseltilir.
     """
-    tasks = [modrinth.search(query, game_version=game_version, loader=loader, limit=limit)]
+    tasks = [modrinth.search(query, game_version=game_version, loader=loader, limit=limit, offset=offset)]
     if curseforge is not None:
         tasks.append(
-            curseforge.search(query, game_version=game_version, loader=loader, limit=limit)
+            curseforge.search(query, game_version=game_version, loader=loader, limit=limit, offset=offset)
         )
 
     outcomes = await asyncio.gather(*tasks, return_exceptions=True)

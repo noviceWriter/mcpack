@@ -94,12 +94,14 @@ class CurseForgeClient(ModSource):
         game_version: str | None = None,
         loader: Loader | None = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> list[SearchResult]:
         params: dict[str, str | int] = {
             "gameId": MINECRAFT_GAME_ID,
             "classId": MOD_CLASS_ID,
             "searchFilter": query,
             "pageSize": limit,
+            "index": offset,
         }
         if game_version:
             params["gameVersion"] = game_version

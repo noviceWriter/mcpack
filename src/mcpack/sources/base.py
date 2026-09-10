@@ -85,6 +85,7 @@ class ModSource(ABC):
         game_version: str | None = None,
         loader: Loader | None = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> list[SearchResult]:
         ...
 

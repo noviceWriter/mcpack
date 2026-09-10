@@ -9,9 +9,6 @@ BORDER = "#34363b"
 TEXT = "#e3e3e6"
 TEXT_MUTED = "#8a8d93"
 
-ENV_REQUIRED = "#2f7d4f"
-ENV_OPTIONAL = "#8a6d1f"
-ENV_UNSUPPORTED = "#7a3030"
 SOURCE_MODRINTH = "#1bd96a"
 SOURCE_CURSEFORGE = "#f16436"
 
@@ -188,12 +185,6 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
 }}
 """
-
-
-def env_color(value: str) -> str:
-    return {"required": ENV_REQUIRED, "optional": ENV_OPTIONAL, "unsupported": ENV_UNSUPPORTED}.get(
-        value, FIELD_BG
-    )
 
 
 def source_color(value: str) -> str:

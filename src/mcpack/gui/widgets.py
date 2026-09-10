@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from mcpack.gui.icon_loader import load_icon
-from mcpack.gui.theme import env_color, loader_color, source_color
+from mcpack.gui.theme import loader_color, source_color
 from mcpack.models import ModSourceType, Pack
 from mcpack.sources.base import SearchResult
 
@@ -106,8 +106,44 @@ def format_downloads(n: int) -> str:
     return str(n)
 
 
-_ENV_LABELS = {"required": "Gerekli", "optional": "Opsiyonel", "unsupported": "Yok"}
 _SOURCE_LABELS = {"modrinth": "Modrinth", "curseforge": "CurseForge"}
+
+
+def _supported_environments(client: str, server: str) -> list[str]:
+    """Modrinth'in mod sayfasındaki "Supported environments" rozetleriyle
+    birebir aynı mantık: client/server'ın required/optional/unsupported
+    kombinasyonundan hangi kurulum şekillerinin (sadece istemci, sadece
+    sunucu, ikisi birden) geçerli olduğunu çıkarır."""
+    labels = []
+    if client != "unsupported" and server != "required":
+        labels.append("İstemci")
+    if server != "unsupported" and client != "required":
+        labels.append("Sunucu")
+    if client != "unsupported" and server != "unsupported":
+        labels.append("İstemci + Sunucu")
+    return labels
+
+
+def _env_badges_widget(client: str, server: str) -> QWidget:
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(4, 2, 4, 2)
+    layout.setSpacing(4)
+
+    labels = _supported_environments(client, server)
+    if not labels:
+        chip = QLabel("Bilinmiyor")
+        chip.setProperty("role", "muted")
+        layout.addWidget(chip)
+    for text in labels:
+        chip = QLabel(text)
+        chip.setStyleSheet(
+            "background-color: #2f333a; color: #cfd2d6; border-radius: 4px; "
+            "padding: 2px 8px; font-size: 11px;"
+        )
+        layout.addWidget(chip)
+    layout.addStretch()
+    return container
 
 
 def _colored_item(text: str, color_hex: str, *, background: bool = False) -> QTableWidgetItem:
@@ -279,9 +315,11 @@ class PackDetailPanel(QWidget):
 
         outer.addLayout(header)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Mod", "Kaynak", "Client", "Server"])
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Mod", "Kaynak", "Ortam"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(1, 100)
+        self.table.setColumnWidth(2, 220)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -351,15 +389,7 @@ class PackDetailPanel(QWidget):
             source_label = _SOURCE_LABELS.get(mod.source.value, mod.source.value)
             self.table.setItem(row, 1, _colored_item(source_label, source_color(mod.source.value)))
 
-            client_label = _ENV_LABELS.get(mod.env.client.value, mod.env.client.value)
-            self.table.setItem(
-                row, 2, _colored_item(client_label, env_color(mod.env.client.value), background=True)
-            )
-
-            server_label = _ENV_LABELS.get(mod.env.server.value, mod.env.server.value)
-            self.table.setItem(
-                row, 3, _colored_item(server_label, env_color(mod.env.server.value), background=True)
-            )
+            self.table.setCellWidget(row, 2, _env_badges_widget(mod.env.client.value, mod.env.server.value))
 
     def _on_remove_clicked(self) -> None:
         row = self.table.currentRow()

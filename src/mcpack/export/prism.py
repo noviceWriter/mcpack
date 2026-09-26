@@ -21,7 +21,9 @@ from mcpack.export.base import (
     EXCLUDED_OVERRIDE_DIR_NAMES,
     Exporter,
     ProgressCallback,
+    collect_content_download_files,
     collect_override_files,
+    collect_world_files,
     ensure_mods_downloaded,
     write_zip,
 )
@@ -90,6 +92,7 @@ class PrismExporter(Exporter):
         source_dir: Path,
         output_path: Path,
         cache_dir: Path,
+        content_root: Path,
         client: httpx.AsyncClient,
         exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
@@ -105,6 +108,11 @@ class PrismExporter(Exporter):
             pack.overrides.include,
             exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
         )
+        override_files += collect_world_files(pack, content_root)
+        downloaded_content = await ensure_mods_downloaded(
+            pack.content_downloads, cache_dir, client, cancel_event=cancel_event
+        )
+        override_files += collect_content_download_files(pack.content_downloads, downloaded_content)
 
         return write_zip(
             output_path,

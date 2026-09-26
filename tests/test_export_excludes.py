@@ -35,7 +35,7 @@ async def test_default_excludes_saves(tmp_path: Path):
     async with httpx.AsyncClient() as client:
         await MrpackExporter().export(
             pack, source_dir=source_dir, output_path=output_path,
-            cache_dir=tmp_path / "cache", client=client,
+            cache_dir=tmp_path / "cache", content_root=tmp_path / "content", client=client,
         )
 
     with zipfile.ZipFile(output_path) as zf:
@@ -52,7 +52,7 @@ async def test_exclude_dirs_empty_includes_saves(tmp_path: Path):
     async with httpx.AsyncClient() as client:
         await MrpackExporter().export(
             pack, source_dir=source_dir, output_path=output_path,
-            cache_dir=tmp_path / "cache", client=client, exclude_dirs=set(),
+            cache_dir=tmp_path / "cache", content_root=tmp_path / "content", client=client, exclude_dirs=set(),
         )
 
     with zipfile.ZipFile(output_path) as zf:

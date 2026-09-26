@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel, Field
 
-from mcpack.models import EnvRequirement, Loader, ModSourceType
+from mcpack.models import ContentKind, EnvRequirement, Loader, ModSourceType
 
 
 class SearchResult(BaseModel):
@@ -84,9 +84,13 @@ class ModSource(ABC):
         *,
         game_version: str | None = None,
         loader: Loader | None = None,
+        content_kind: ContentKind | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[SearchResult]:
+        """content_kind None ise mod aranır; SHADERPACK/RESOURCEPACK/DATAPACK
+        verilirse o türde içerik aranır (loader facet'i sadece mod aramasında
+        anlamlıdır, diğer türlerde yok sayılır)."""
         ...
 
     @abstractmethod

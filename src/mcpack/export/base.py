@@ -16,7 +16,7 @@ from pathlib import Path
 import httpx
 
 from mcpack.downloader import DownloadCancelledError, HashMismatchError, download_file, verify_hashes
-from mcpack.models import ModEntry, Pack
+from mcpack.models import ContentDownload, ContentKind, DownloadableFile, Pack
 from mcpack.packs.storage import PathTraversalError, safe_join
 
 ProgressCallback = Callable[[int, int], None]
@@ -24,16 +24,27 @@ ProgressCallback = Callable[[int, int], None]
 EXCLUDED_OVERRIDE_DIR_NAMES = {"logs", "crash-reports", "saves"}
 """proje-amacı.md §2.3: export sırasında hariç tutulabilecek dizinler."""
 
+CONTENT_ARCHIVE_DIRS: dict[ContentKind, str] = {
+    ContentKind.SHADERPACK: "shaderpacks",
+    ContentKind.RESOURCEPACK: "resourcepacks",
+    ContentKind.DATAPACK: "datapacks",
+}
+"""Modrinth/CurseForge'tan indirilen shader/resourcepack/datapack'in arşivdeki
+top-level klasör adı (bkz. collect_content_download_files). WORLD ayrı ele
+alınır — bkz. collect_world_files."""
+
 
 async def ensure_mods_downloaded(
-    mods: list[ModEntry],
+    mods: list[DownloadableFile],
     cache_dir: Path,
     client: httpx.AsyncClient,
     *,
     progress_cb: ProgressCallback | None = None,
     cancel_event: threading.Event | None = None,
 ) -> dict[str, Path]:
-    """Verilen mod listesini cache_dir'e indirir (hash doğrulanır).
+    """Verilen dosya listesini (mod ya da shader/resourcepack/datapack —
+    ikisi de DownloadableFile şeklinde, bkz. models.py) cache_dir'e indirir
+    (hash doğrulanır).
 
     Zaten diskte olup hash'i tutan dosyalar tekrar indirilmez — export'u
     tekrar tekrar çalıştırmak ucuz olsun diye.
@@ -109,6 +120,62 @@ def collect_override_files(
     return files
 
 
+def collect_world_files(
+    pack: Pack,
+    content_root: Path,
+    *,
+    selected_world: str | None = None,
+) -> list[tuple[Path, str]]:
+    """PackManager.add_content ile pack'e kopyalanmış dünya(lar)ı (gerçek_yol,
+    arşiv_içi_göreli_yol) çiftleri olarak döner — collect_override_files'ın
+    source_dir'e bağımlı olmasının aksine bunlar pack'in kendi kalıcı
+    deposundan (content_root) okunur.
+
+    selected_world verilirse SADECE o isimdeki dünyayla eşleşir ve arşivde
+    orijinal adı yerine "world/" altında yer alır (sunucular tek bir dünya
+    klasörü bekler — proje-amacı.md server pack akışı). selected_world
+    verilmezse yüklü tüm dünyalar kendi adlarıyla saves/<ad>/ altında dahil
+    edilir (client formatları — birden çok örnek dünya olabilir).
+    """
+    files: list[tuple[Path, str]] = []
+    for entry in pack.content_of(ContentKind.WORLD):
+        abs_path = content_root / entry.stored_path
+        if not abs_path.exists():
+            continue
+
+        if selected_world is not None:
+            if entry.name != selected_world:
+                continue
+            arc_root = "world"
+        else:
+            arc_root = f"saves/{entry.name}"
+
+        if abs_path.is_file():
+            files.append((abs_path, arc_root))
+        else:
+            for path in abs_path.rglob("*"):
+                if path.is_file():
+                    rel = path.relative_to(abs_path).as_posix()
+                    files.append((path, f"{arc_root}/{rel}"))
+    return files
+
+
+def collect_content_download_files(
+    downloads: list[ContentDownload], downloaded: dict[str, Path]
+) -> list[tuple[Path, str]]:
+    """ensure_mods_downloaded ile cache'e indirilmiş shader/resourcepack/
+    datapack dosyalarını (gerçek_yol, arşiv_içi_göreli_yol) çiftleri olarak
+    döner — her biri kendi türünün top-level arşiv klasörüne (shaderpacks/,
+    resourcepacks/, datapacks/) yerleştirilir."""
+    files: list[tuple[Path, str]] = []
+    for entry in downloads:
+        path = downloaded.get(entry.project_id)
+        if path is None:
+            continue
+        files.append((path, f"{CONTENT_ARCHIVE_DIRS[entry.kind]}/{path.name}"))
+    return files
+
+
 def write_zip(
     output_path: Path,
     *,
@@ -151,6 +218,7 @@ class Exporter(ABC):
         source_dir: Path,
         output_path: Path,
         cache_dir: Path,
+        content_root: Path,
         client: httpx.AsyncClient,
         exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
@@ -160,6 +228,10 @@ class Exporter(ABC):
 
         source_dir: overrides (config, kubejs, ...) için kaynak dizin — genelde
         kullanıcının pack'i düzenlerken kullandığı çalışma klasörü.
+        content_root: PackManager.content_root(pack) — yüklenmiş dünya(lar)ın
+        gerçekten kopyalandığı klasör (bkz. collect_world_files). Shader/
+        resourcepack/datapack ise content_downloads üzerinden indirilir
+        (bkz. collect_content_download_files).
         exclude_dirs: overrides'tan hariç tutulacak alt dizin adları (logs,
         crash-reports, saves, ...). None ise EXCLUDED_OVERRIDE_DIR_NAMES
         kullanılır (proje-amacı.md §2.3 — "saves opsiyonel" hariç tutulabilmeli,

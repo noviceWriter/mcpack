@@ -4,7 +4,7 @@ import respx
 
 from mcpack.gameinfo import (
     FABRIC_LOADER_URL,
-    FORGE_PROMOTIONS_URL,
+    FORGE_MAVEN_METADATA_URL,
     MODRINTH_TAG_URL,
     NEOFORGE_VERSIONS_URL,
     GameInfoError,
@@ -48,25 +48,40 @@ async def test_get_fabric_loader_versions():
     assert versions == ["0.16.5", "0.16.4"]
 
 
+_FORGE_METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <groupId>net.minecraftforge</groupId>
+  <artifactId>forge</artifactId>
+  <versioning>
+    <versions>
+      <version>1.21.1-47.3.1</version>
+      <version>1.21.1-47.4.0</version>
+      <version>1.21.1-47.2.0</version>
+      <version>1.20.1-47.1.0</version>
+    </versions>
+  </versioning>
+</metadata>
+"""
+
+
 @pytest.mark.asyncio
-async def test_get_forge_versions_prefers_recommended_then_latest():
+async def test_get_forge_versions_returns_full_catalog_sorted_desc():
     with respx.mock:
-        respx.get(FORGE_PROMOTIONS_URL).mock(
-            return_value=httpx.Response(
-                200,
-                json={"promos": {"1.21.1-recommended": "47.3.1", "1.21.1-latest": "47.4.0"}},
-            )
+        respx.get(FORGE_MAVEN_METADATA_URL).mock(
+            return_value=httpx.Response(200, text=_FORGE_METADATA_XML)
         )
         async with httpx.AsyncClient() as client:
             versions = await get_forge_versions(client, "1.21.1")
 
-    assert versions == ["47.3.1", "47.4.0"]
+    assert versions == ["47.4.0", "47.3.1", "47.2.0"]
 
 
 @pytest.mark.asyncio
 async def test_get_forge_versions_empty_when_no_match():
     with respx.mock:
-        respx.get(FORGE_PROMOTIONS_URL).mock(return_value=httpx.Response(200, json={"promos": {}}))
+        respx.get(FORGE_MAVEN_METADATA_URL).mock(
+            return_value=httpx.Response(200, text=_FORGE_METADATA_XML)
+        )
         async with httpx.AsyncClient() as client:
             versions = await get_forge_versions(client, "1.99.9")
 

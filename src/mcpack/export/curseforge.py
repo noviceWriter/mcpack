@@ -22,7 +22,9 @@ from mcpack.export.base import (
     EXCLUDED_OVERRIDE_DIR_NAMES,
     Exporter,
     ProgressCallback,
+    collect_content_download_files,
     collect_override_files,
+    collect_world_files,
     ensure_mods_downloaded,
     write_zip,
 )
@@ -38,6 +40,10 @@ _LOADER_ID_PREFIX = {
 
 def build_manifest(pack: Pack) -> dict:
     cf_mods = [m for m in pack.mods if m.source == ModSourceType.CURSEFORGE]
+    # Shader/resourcepack/datapack de CF kaynaklıysa modlarla aynı şekilde
+    # projectID/fileID ile referans edilir (indirme CF launcher'ı üzerinden
+    # olur) — sadece CF'de bulunmayanlar overrides/ altına gömülür (bkz. export()).
+    cf_content = [c for c in pack.content_downloads if c.source == ModSourceType.CURSEFORGE]
     mod_loaders = (
         []
         if pack.loader == Loader.VANILLA
@@ -55,11 +61,11 @@ def build_manifest(pack: Pack) -> dict:
         "author": pack.author,
         "files": [
             {
-                "projectID": int(m.project_id),
-                "fileID": int(m.version_id),
+                "projectID": int(entry.project_id),
+                "fileID": int(entry.version_id),
                 "required": True,
             }
-            for m in cf_mods
+            for entry in (*cf_mods, *cf_content)
         ],
         "overrides": "overrides",
     }
@@ -76,6 +82,7 @@ class CurseForgeExporter(Exporter):
         source_dir: Path,
         output_path: Path,
         cache_dir: Path,
+        content_root: Path,
         client: httpx.AsyncClient,
         exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
@@ -84,10 +91,15 @@ class CurseForgeExporter(Exporter):
         manifest = build_manifest(pack)
 
         # CF olmayan kaynaklı modlar manifest'te referans edilemez, jar
-        # olarak overrides/mods/ altına gömülmeli.
+        # olarak overrides/mods/ altına gömülmeli. Aynı kural shader/
+        # resourcepack/datapack için de geçerli.
         non_cf_mods = [m for m in pack.mods if m.source != ModSourceType.CURSEFORGE]
-        embedded_files = await ensure_mods_downloaded(
+        non_cf_content = [c for c in pack.content_downloads if c.source != ModSourceType.CURSEFORGE]
+        embedded_mod_files = await ensure_mods_downloaded(
             non_cf_mods, cache_dir, client, progress_cb=progress_cb, cancel_event=cancel_event
+        )
+        embedded_content_files = await ensure_mods_downloaded(
+            non_cf_content, cache_dir, client, cancel_event=cancel_event
         )
 
         override_files = collect_override_files(
@@ -95,7 +107,9 @@ class CurseForgeExporter(Exporter):
             pack.overrides.include,
             exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
         )
-        for path in embedded_files.values():
+        override_files += collect_world_files(pack, content_root)
+        override_files += collect_content_download_files(non_cf_content, embedded_content_files)
+        for path in embedded_mod_files.values():
             override_files.append((path, f"mods/{path.name}"))
 
         return write_zip(

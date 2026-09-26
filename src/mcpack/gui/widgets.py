@@ -37,6 +37,8 @@ from mcpack.gui.theme import (
     chip_colors,
     icon_placeholder_bg,
     loader_color,
+    pack_card_background,
+    pack_text_colors,
     source_color,
     status_good_color,
 )
@@ -204,14 +206,16 @@ def _source_indicator_widget(source_value: str) -> QWidget:
 
 
 def _badge_label(text: str, color_hex: str, *, size: int = 36) -> QLabel:
-    """Prism/CurseForge tarzı köşeli renkli rozet — gerçek bir ikon yerine
-    (network'ten çekilemeyen pack'ler için) loader/harf bazlı görsel kimlik."""
+    """Prism/CurseForge tarzı köşeli renkli rozet — loader emoji ikonu için
+    (gerçek bir görsel ikon paketi olmadan, network'ten çekilemeyen pack'ler
+    için de hızlı görsel kimlik sağlar)."""
     badge = QLabel(text)
     badge.setFixedSize(size, size)
     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    text_color = "#1f2937" if QColor(color_hex).lightness() > 160 else "#ffffff"
     badge.setStyleSheet(
-        f"background-color: {color_hex}; color: #10110f; font-weight: 700; "
-        f"border-radius: 8px; font-size: {max(11, size // 3)}px;"
+        f"background-color: {color_hex}; color: {text_color}; border-radius: 8px; "
+        f"font-size: {max(16, int(size * 0.55))}px;"
     )
     return badge
 
@@ -238,38 +242,79 @@ def _set_scaled_pixmap(label: QLabel, pixmap: QPixmap) -> None:
 # ---------------------------------------------------------------------------
 
 
+_LOADER_ICONS = {
+    "vanilla": "🌱",
+    "fabric": "🧵",
+    "quilt": "🧶",
+    "forge": "🔨",
+    "neoforge": "🔥",
+}
+
+
 class _PackCard(QWidget):
     def __init__(self, pack: Pack) -> None:
         super().__init__()
-        self.setStyleSheet("background: transparent;")
+        self.setStyleSheet("QLabel { background-color: transparent; }")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(10)
+        self._name_label: QLabel
+        self._subtitle_label: QLabel
 
         loader_label = "Vanilla" if pack.loader.value == "vanilla" else pack.loader.value.capitalize()
-        badge = _badge_label(loader_label[0], loader_color(pack.loader.value))
+        icon = _LOADER_ICONS.get(pack.loader.value, "❓")
+        badge = _badge_label(icon, loader_color(pack.loader.value))
         layout.addWidget(badge)
 
         text_col = QVBoxLayout()
         text_col.setSpacing(2)
         name_label = QLabel(pack.name)
-        name_label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        self._name_label = name_label
+        name_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        name_label.setStyleSheet(
+            "background: transparent; selection-background-color: transparent; "
+            "font-weight: 600; font-size: 13px;"
+        )
         text_col.addWidget(name_label)
 
         subtitle = QLabel(f"{loader_label} · MC {pack.minecraft} · {len(pack.mods)} mod")
+        self._subtitle_label = subtitle
+        subtitle.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        subtitle.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         subtitle.setProperty("role", "muted")
+        subtitle.setStyleSheet(
+            "background: transparent; selection-background-color: transparent; "
+            "font-size: 12px;"
+        )
         text_col.addWidget(subtitle)
 
         layout.addLayout(text_col, 1)
+
+    def set_selected(self, selected: bool) -> None:
+        name_color, subtitle_color = pack_text_colors(selected)
+        self.setStyleSheet(
+            f"background-color: {pack_card_background(selected)}; "
+            "QLabel { background-color: transparent; }"
+        )
+        self._name_label.setStyleSheet(
+            f"color: {name_color}; font-weight: 600; font-size: 13px;"
+        )
+        self._subtitle_label.setStyleSheet(
+            f"background: transparent; selection-background-color: transparent; "
+            f"color: {subtitle_color}; font-size: 12px;"
+        )
 
 
 class PackListPanel(QWidget):
     pack_selected = Signal(str)
     new_pack_requested = Signal()
+    delete_pack_requested = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
         self._packs: list[Pack] = []
+        self._cards: list[_PackCard] = []
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -287,19 +332,37 @@ class PackListPanel(QWidget):
         new_button.clicked.connect(self.new_pack_requested.emit)
         layout.addWidget(new_button)
 
+        delete_button = QPushButton("Seçili Pack'i Sil")
+        delete_button.setObjectName("danger")
+        delete_button.clicked.connect(self._delete_selected)
+        layout.addWidget(delete_button)
+
     def set_packs(self, packs: list[Pack]) -> None:
         self._packs = packs
+        self._cards = []
         self.list_widget.clear()
         for pack in packs:
             item = QListWidgetItem()
             card = _PackCard(pack)
+            self._cards.append(card)
             item.setSizeHint(card.sizeHint())
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, card)
+        self._update_card_selection(self.list_widget.currentRow())
 
     def _on_row_changed(self, row: int) -> None:
+        self._update_card_selection(row)
         if 0 <= row < len(self._packs):
             self.pack_selected.emit(self._packs[row].id)
+
+    def _update_card_selection(self, row: int) -> None:
+        for index, card in enumerate(self._cards):
+            card.set_selected(index == row)
+
+    def _delete_selected(self) -> None:
+        row = self.list_widget.currentRow()
+        if 0 <= row < len(self._packs):
+            self.delete_pack_requested.emit(self._packs[row].id)
 
 
 # ---------------------------------------------------------------------------
@@ -342,9 +405,18 @@ class PackDetailPanel(QWidget):
         self.title_label = QLabel("Pack seçilmedi")
         self.title_label.setStyleSheet("font-size: 19px; font-weight: 700;")
         title_col.addWidget(self.title_label)
+
+        subtitle_row = QHBoxLayout()
+        subtitle_row.setSpacing(8)
         self.subtitle_label = QLabel("Soldan bir pack seçin ya da yeni oluşturun.")
         self.subtitle_label.setProperty("role", "muted")
-        title_col.addWidget(self.subtitle_label)
+        subtitle_row.addWidget(self.subtitle_label)
+        self.mod_count_badge = QLabel("")
+        self.mod_count_badge.hide()
+        subtitle_row.addWidget(self.mod_count_badge)
+        subtitle_row.addStretch()
+        title_col.addLayout(subtitle_row)
+
         header.addLayout(title_col)
         header.addStretch()
 
@@ -354,18 +426,18 @@ class PackDetailPanel(QWidget):
         self.format_combo.addItem("Prism / MultiMC (.zip)", "prism")
         header.addWidget(self.format_combo)
 
-        export_button = QPushButton("Export Et")
+        export_button = QPushButton("Dışa Aktar")
         export_button.setObjectName("primary")
         export_button.clicked.connect(
             lambda: self.export_requested.emit(self.format_combo.currentData())
         )
         header.addWidget(export_button)
 
-        server_button = QPushButton("Server Pack")
+        server_button = QPushButton("Sunucu Paketi")
         server_button.clicked.connect(self.server_pack_requested.emit)
         header.addWidget(server_button)
 
-        sklauncher_button = QPushButton("SKLauncher")
+        sklauncher_button = QPushButton("SKLauncher ile Çalıştır")
         sklauncher_button.clicked.connect(self.run_sklauncher_requested.emit)
         header.addWidget(sklauncher_button)
 
@@ -377,9 +449,9 @@ class PackDetailPanel(QWidget):
         self.mod_filter_input.textChanged.connect(self._on_filter_or_sort_changed)
         table_options_row.addWidget(self.mod_filter_input, 1)
 
-        sort_hint = QLabel("Sıralamak için sütun başlığına tıkla ↓")
-        sort_hint.setProperty("role", "muted")
-        table_options_row.addWidget(sort_hint)
+        self.sort_hint = QLabel("Sıralamak için sütun başlığına tıkla ↓")
+        self.sort_hint.setProperty("role", "muted")
+        table_options_row.addWidget(self.sort_hint)
 
         self.show_file_names_checkbox = QCheckBox("Dosya adlarını göster")
         self.show_file_names_checkbox.toggled.connect(self._on_show_file_names_toggled)
@@ -407,6 +479,38 @@ class PackDetailPanel(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         outer.addWidget(self.table, 1)
 
+        # Boş durum: pack'te hiç mod yoksa boş bir tablo göstermek yerine
+        # "Mod Ekle" eylem çağrısı içeren bir kart gösterilir.
+        self.empty_state = QWidget()
+        empty_layout = QVBoxLayout(self.empty_state)
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.setSpacing(6)
+        empty_icon = QLabel("📦")
+        empty_icon.setStyleSheet("font-size: 36px;")
+        empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_icon)
+        empty_title = QLabel("Henüz mod eklenmemiş")
+        empty_title.setStyleSheet("font-size: 15px; font-weight: 600;")
+        empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_title)
+        empty_sub = QLabel("Modrinth ve CurseForge'ta arayıp bu pack'e mod ekleyebilirsin.")
+        empty_sub.setProperty("role", "muted")
+        empty_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_sub)
+        empty_cta = QPushButton("+ Mod Ekle")
+        empty_cta.setObjectName("primary")
+        empty_cta.clicked.connect(self.add_mod_clicked.emit)
+        empty_layout.addWidget(empty_cta, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.empty_state.hide()
+        outer.addWidget(self.empty_state, 1)
+
+        # Arama/filtre hiçbir moda uymazsa (pack boş değil ama sonuç boş).
+        self.filter_empty_notice = QLabel("")
+        self.filter_empty_notice.setProperty("role", "muted")
+        self.filter_empty_notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.filter_empty_notice.hide()
+        outer.addWidget(self.filter_empty_notice)
+
         self.mod_actions_bar = QWidget()
         button_row = QHBoxLayout(self.mod_actions_bar)
         button_row.setContentsMargins(0, 0, 0, 0)
@@ -427,12 +531,27 @@ class PackDetailPanel(QWidget):
         outer.addWidget(self.mod_actions_bar)
 
         self.vanilla_notice = QLabel(
-            "Vanilla pack'lerde mod eklenemez — mod eklemek için bir loader (Fabric/Quilt/Forge/NeoForge) seçin."
+            "Vanilla pack'lerde mod eklenemez — mod eklemek için bir loader (Fabric/Quilt/Forge/NeoForge) seçin.\n"
+            "Shader, dünya, datapack ve görüntü paketi bir loader gerektirmez, aşağıdan eklenebilir."
         )
         self.vanilla_notice.setObjectName("warningBox")
         self.vanilla_notice.setWordWrap(True)
         self.vanilla_notice.hide()
         outer.addWidget(self.vanilla_notice)
+
+        # Vanilla pack'lerde "+ Mod Ekle" (mod_actions_bar) gizli olduğu için
+        # aynı pencereyi (Mod Ekle diyaloğu, artık shader/dünya/datapack/
+        # görüntü paketi sekmelerini de içeriyor) açacak ayrı bir giriş noktası.
+        self.vanilla_content_bar = QWidget()
+        vanilla_content_layout = QHBoxLayout(self.vanilla_content_bar)
+        vanilla_content_layout.setContentsMargins(0, 0, 0, 0)
+        vanilla_content_button = QPushButton("+ Shader / Dünya / Datapack / Görüntü Paketi")
+        vanilla_content_button.setObjectName("primary")
+        vanilla_content_button.clicked.connect(self.add_mod_clicked.emit)
+        vanilla_content_layout.addWidget(vanilla_content_button)
+        vanilla_content_layout.addStretch()
+        self.vanilla_content_bar.hide()
+        outer.addWidget(self.vanilla_content_bar)
         outer.addStretch()  # uyarı kutusu dikey boşluğu doldurup dev bir bloğa dönüşmesin
 
     def _visible_mods(self, pack: Pack) -> list[ModEntry]:
@@ -472,35 +591,74 @@ class PackDetailPanel(QWidget):
         if pack is None:
             self.title_label.setText("Pack seçilmedi")
             self.subtitle_label.setText("Soldan bir pack seçin ya da yeni oluşturun.")
+            self.mod_count_badge.hide()
             self.table.setRowCount(0)
             self.table.hide()
+            self.empty_state.hide()
+            self.filter_empty_notice.hide()
             self.mod_actions_bar.hide()
             self.mod_filter_input.hide()
+            self.sort_hint.hide()
             self.show_file_names_checkbox.hide()
             self.vanilla_notice.hide()
+            self.vanilla_content_bar.hide()
             return
 
         is_vanilla = pack.loader.value == "vanilla"
         loader_label = "Vanilla" if is_vanilla else pack.loader.value.capitalize()
         loader_version = f" {pack.loader_version}" if pack.loader_version else ""
         self.title_label.setText(pack.name)
-        self.subtitle_label.setText(
-            f"{loader_label}{loader_version}  ·  MC {pack.minecraft}  ·  {len(pack.mods)} mod"
+        self.subtitle_label.setText(f"{loader_label}{loader_version}  ·  MC {pack.minecraft}")
+
+        chip_bg, chip_text = chip_colors()
+        self.mod_count_badge.setText(f"{len(pack.mods)} mod")
+        self.mod_count_badge.setStyleSheet(
+            f"background-color: {chip_bg}; color: {chip_text}; border-radius: 4px; "
+            "padding: 1px 8px; font-size: 11px;"
         )
+        self.mod_count_badge.setVisible(not is_vanilla)
 
         # Vanilla pack'lere mod eklenemez (loader yok) — mod tablosu ve
-        # ekleme/düzenleme araç çubuğu bu durumda tamamen gizlenir.
-        self.table.setVisible(not is_vanilla)
-        self.mod_actions_bar.setVisible(not is_vanilla)
-        self.mod_filter_input.setVisible(not is_vanilla)
-        self.show_file_names_checkbox.setVisible(not is_vanilla)
+        # ekleme/düzenleme araç çubuğu bu durumda tamamen gizlenir. Pack'te
+        # hiç mod yoksa da aynı kontroller gizlenir; onların yerini boş
+        # tablo yerine gösterilen "Mod Ekle" eylem çağrısı kartı alır.
+        show_table_controls = not is_vanilla and bool(pack.mods)
+        self.mod_actions_bar.setVisible(show_table_controls)
+        self.mod_filter_input.setVisible(show_table_controls)
+        self.sort_hint.setVisible(show_table_controls)
+        self.show_file_names_checkbox.setVisible(show_table_controls)
         self.vanilla_notice.setVisible(is_vanilla)
+        self.vanilla_content_bar.setVisible(is_vanilla)
         if is_vanilla:
+            self.table.hide()
+            self.empty_state.hide()
+            self.filter_empty_notice.hide()
             self.table.setRowCount(0)
             return
 
+        # Boş durum: pack'te hiç mod yoksa tablo yerine "Mod Ekle" eylem
+        # çağrısı gösterilir; filtre hiçbir sonuç vermiyorsa ayrı bir not.
+        if not pack.mods:
+            self.table.hide()
+            self.filter_empty_notice.hide()
+            self.empty_state.show()
+            self.table.setRowCount(0)
+            return
+        self.empty_state.hide()
+
         show_file_names = self.show_file_names_checkbox.isChecked()
         visible_mods = self._visible_mods(pack)
+
+        if not visible_mods:
+            query = self.mod_filter_input.text().strip()
+            self.table.hide()
+            self.filter_empty_notice.setText(f'"{query}" ile eşleşen mod bulunamadı.')
+            self.filter_empty_notice.show()
+            self.table.setRowCount(0)
+            return
+        self.filter_empty_notice.hide()
+        self.table.show()
+
         self.table.setRowCount(len(visible_mods))
         for row, mod in enumerate(visible_mods):
             name_item = QTableWidgetItem("")
@@ -617,22 +775,32 @@ class SearchPanel(QWidget):
     """Kullanıcı yazmayı bıraktıktan bu kadar ms sonra otomatik arama tetiklenir
     (her tuş vuruşunda değil — gereksiz API isteğini önlemek için)."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        title: str = "Mod Ara",
+        query_placeholder: str = "Mod adı...",
+        add_button_text: str = "Seçili Modu Pack'e Ekle",
+        curseforge_only: bool = False,
+    ) -> None:
+        """curseforge_only: Modrinth'te karşılığı olmayan içerik türleri için
+        (ör. Dünya/Harita — sadece CurseForge'ta bir proje türü olarak var)
+        "Tümü"/"Modrinth" seçenekleri hiç gösterilmez, kaynak sabitçe
+        CurseForge olur."""
         super().__init__()
         self._results: list[SearchResult] = []
-        self._cards: list[_ModResultCard] = []
         self._added_project_ids: set[str] = set()
         self._has_more = True
         self._loading_more = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        group, layout = _panel_group("Mod Ara")
+        group, layout = _panel_group(title)
         outer.addWidget(group)
 
         row = QHBoxLayout()
         self.query_input = QLineEdit()
-        self.query_input.setPlaceholderText("Mod adı...")
+        self.query_input.setPlaceholderText(query_placeholder)
         self.query_input.returnPressed.connect(self._on_search_clicked)
         self._live_search_timer = QTimer(self)
         self._live_search_timer.setSingleShot(True)
@@ -642,11 +810,24 @@ class SearchPanel(QWidget):
         row.addWidget(self.query_input)
 
         self.source_combo = QComboBox()
-        self.source_combo.addItem("Tümü (Modrinth + CurseForge)", "both")
-        for s in ModSourceType:
-            self.source_combo.addItem(_SOURCE_LABELS.get(s.value, s.value), s.value)
+        if curseforge_only:
+            self.source_combo.addItem(
+                _SOURCE_LABELS.get(ModSourceType.CURSEFORGE.value, "CurseForge"),
+                ModSourceType.CURSEFORGE.value,
+            )
+            self.source_combo.setEnabled(False)
+        else:
+            self.source_combo.addItem("Tümü (Modrinth + CurseForge)", "both")
+            for s in ModSourceType:
+                self.source_combo.addItem(_SOURCE_LABELS.get(s.value, s.value), s.value)
         self.source_combo.currentIndexChanged.connect(self._on_search_clicked)
         row.addWidget(self.source_combo)
+
+        self.view_combo = QComboBox()
+        self.view_combo.addItem("Toplu Liste", "all")
+        self.view_combo.addItem("Kategoriye Göre", "category")
+        self.view_combo.currentIndexChanged.connect(self._refresh_results_view)
+        row.addWidget(self.view_combo)
 
         search_button = QPushButton("Ara")
         search_button.setObjectName("primary")
@@ -662,7 +843,7 @@ class SearchPanel(QWidget):
         self.results_list.verticalScrollBar().valueChanged.connect(self._on_scroll)
         layout.addWidget(self.results_list)
 
-        add_button = QPushButton("Seçili Modu Pack'e Ekle")
+        add_button = QPushButton(add_button_text)
         add_button.clicked.connect(self._on_add_clicked)
         layout.addWidget(add_button)
 
@@ -691,26 +872,65 @@ class SearchPanel(QWidget):
 
         if not append:
             self._results = []
-            self._cards = []
             self.results_list.clear()
 
-        for r in results:
-            item = QListWidgetItem()
-            card = _ModResultCard(r, already_added=r.project_id in self._added_project_ids)
-            item.setSizeHint(card.sizeHint())
-            self.results_list.addItem(item)
-            self.results_list.setItemWidget(item, card)
-            self._cards.append(card)
+        start = len(self._results)
+        self._populate(list(enumerate(results, start=start)))
         self._results.extend(results)
+
+    def _populate(self, indexed_results: list[tuple[int, SearchResult]]) -> None:
+        """indexed_results: (self._results içindeki index, sonuç) çiftleri.
+        Kategoriye göre görünümde bir sonuç birden çok kategoriye ait olabilir
+        ve bu yüzden birden fazla satırda görünebilir — bu yüzden kartları
+        self._results ile konumsal (zip) değil, her satırın kendi index'i
+        üzerinden eşleştiriyoruz (bkz. set_added_project_ids)."""
+        if self.view_combo.currentData() == "category":
+            grouped: dict[str, list[tuple[int, SearchResult]]] = {}
+            for index, result in indexed_results:
+                for category in result.categories or ["Diğer"]:
+                    grouped.setdefault(category, []).append((index, result))
+            for category, entries in sorted(grouped.items()):
+                header = QListWidgetItem(category.capitalize())
+                header.setData(Qt.ItemDataRole.UserRole, -1)
+                header.setFlags(Qt.ItemFlag.NoItemFlags)
+                self.results_list.addItem(header)
+                for index, result in entries:
+                    self._add_result_item(result, index)
+        else:
+            for index, result in indexed_results:
+                self._add_result_item(result, index)
+
+    def _add_result_item(self, result: SearchResult, index: int) -> None:
+        item = QListWidgetItem()
+        item.setData(Qt.ItemDataRole.UserRole, index)
+        card = _ModResultCard(result, already_added=result.project_id in self._added_project_ids)
+        item.setSizeHint(card.sizeHint())
+        self.results_list.addItem(item)
+        self.results_list.setItemWidget(item, card)
+
+    def _refresh_results_view(self) -> None:
+        if not self._results:
+            return
+        self.results_list.clear()
+        self._populate(list(enumerate(self._results)))
 
     def set_added_project_ids(self, ids: set[str]) -> None:
         """Pack'te zaten olan modları listede "✓ Pack'te" ile işaretler —
         kullanıcı aynı modu yanlışlıkla tekrar eklemeye çalışmasın diye."""
         self._added_project_ids = ids
-        for card, result in zip(self._cards, self._results):
-            card.set_already_added(result.project_id in ids)
+        for row in range(self.results_list.count()):
+            item = self.results_list.item(row)
+            index = item.data(Qt.ItemDataRole.UserRole)
+            if not isinstance(index, int) or index < 0:
+                continue
+            widget = self.results_list.itemWidget(item)
+            if isinstance(widget, _ModResultCard):
+                widget.set_already_added(self._results[index].project_id in ids)
 
     def _on_add_clicked(self) -> None:
-        row = self.results_list.currentRow()
-        if 0 <= row < len(self._results):
-            self.add_mod_requested.emit(self._results[row])
+        item = self.results_list.currentItem()
+        if item is None:
+            return
+        index = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(index, int) and 0 <= index < len(self._results):
+            self.add_mod_requested.emit(self._results[index])

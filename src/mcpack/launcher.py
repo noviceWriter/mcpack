@@ -24,7 +24,9 @@ import httpx
 
 from mcpack.export.base import (
     EXCLUDED_OVERRIDE_DIR_NAMES,
+    collect_content_download_files,
     collect_override_files,
+    collect_world_files,
     ensure_mods_downloaded,
 )
 from mcpack.export.prism import build_instance_cfg, build_mmc_pack
@@ -57,6 +59,7 @@ async def prepare_instance(
     source_dir: Path,
     instances_dir: Path,
     cache_dir: Path,
+    content_root: Path,
     client: httpx.AsyncClient,
     exclude_dirs: set[str] | None = None,
     progress_cb=None,
@@ -86,11 +89,17 @@ async def prepare_instance(
         if existing.name not in current_names:
             existing.unlink()
 
-    for real_path, rel in collect_override_files(
+    content_files = collect_override_files(
         source_dir,
         pack.overrides.include,
         exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
-    ):
+    )
+    content_files += collect_world_files(pack, content_root)
+    downloaded_content = await ensure_mods_downloaded(
+        pack.content_downloads, cache_dir, client, cancel_event=cancel_event
+    )
+    content_files += collect_content_download_files(pack.content_downloads, downloaded_content)
+    for real_path, rel in content_files:
         dest = minecraft_dir / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(real_path, dest)

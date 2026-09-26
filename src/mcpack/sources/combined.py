@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import re
 
-from mcpack.models import Loader
+from mcpack.models import ContentKind, Loader
 from mcpack.sources.base import SearchResult
 from mcpack.sources.curseforge import CurseForgeClient
 from mcpack.sources.modrinth import ModrinthClient
@@ -27,6 +27,7 @@ async def search_all(
     curseforge: CurseForgeClient | None,
     game_version: str | None = None,
     loader: Loader | None = None,
+    content_kind: ContentKind | None = None,
     limit: int = 20,
     offset: int = 0,
     prefer_modrinth: bool = True,
@@ -37,10 +38,18 @@ async def search_all(
     Bir kaynak hata verirse (örn. CF anahtarı geçersiz/engelli) o kaynak
     sessizce atlanır — ikisi de başarısız olursa hata yükseltilir.
     """
-    tasks = [modrinth.search(query, game_version=game_version, loader=loader, limit=limit, offset=offset)]
+    tasks = [
+        modrinth.search(
+            query, game_version=game_version, loader=loader, content_kind=content_kind,
+            limit=limit, offset=offset,
+        )
+    ]
     if curseforge is not None:
         tasks.append(
-            curseforge.search(query, game_version=game_version, loader=loader, limit=limit, offset=offset)
+            curseforge.search(
+                query, game_version=game_version, loader=loader, content_kind=content_kind,
+                limit=limit, offset=offset,
+            )
         )
 
     outcomes = await asyncio.gather(*tasks, return_exceptions=True)

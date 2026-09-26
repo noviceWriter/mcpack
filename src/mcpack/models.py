@@ -59,19 +59,28 @@ class ModHashes(BaseModel):
     sha512: str | None = None
 
 
-class ModEntry(BaseModel):
+class DownloadableFile(BaseModel):
+    """Modrinth/CurseForge'tan indirilecek bir dosyanın ortak alanları.
+
+    Mod, shader, resourcepack ve datapack indirmelerinin hepsi bu şekle sahiptir
+    — export sırasında tek bir indirme fonksiyonuyla (bkz.
+    export/base.py:ensure_mods_downloaded) işlenebilirler."""
+
     source: ModSourceType
     project_id: str
     slug: str | None = None
     """Bilinen client-only listesiyle eşleştirme için (bkz. export/server.py)."""
     name: str | None = None
-    """Modun kullanıcı dostu adı (ör. "Just Enough Items (JEI)") — sadece
-    UI'de gösterim için, export'ta hâlâ file_name kullanılır."""
+    """Kullanıcı dostu ad (ör. "Just Enough Items (JEI)") — sadece UI'de
+    gösterim için, export'ta hâlâ file_name kullanılır."""
     version_id: str
     file_name: str
     file_size: int | None = None
     hashes: ModHashes = Field(default_factory=ModHashes)
     download_url: str
+
+
+class ModEntry(DownloadableFile):
     env: ModEnv = Field(default_factory=ModEnv)
     dependencies: list[str] = Field(default_factory=list)
     """Bağımlı olunan diğer mod'ların project_id listesi."""
@@ -80,6 +89,34 @@ class ModEntry(BaseModel):
 class Overrides(BaseModel):
     include: list[str] = Field(default_factory=lambda: ["config"])
     """overrides klasörüne dahil edilecek dizin/dosya adları (config, kubejs, defaultconfigs...)."""
+
+
+class ContentKind(StrEnum):
+    """Mod dışı ama pack'e eklenebilen içerik türleri.
+
+    SHADERPACK/RESOURCEPACK/DATAPACK Modrinth/CurseForge'tan aranıp indirilir
+    (bkz. ContentDownload, mod eklemeyle birebir aynı akış — kullanıcı isteği).
+    WORLD indirilebilir bir kaynak değildir (kullanıcının kendi dünyası),
+    diskten seçilip pack'in kendi deposuna kopyalanır (bkz. ContentEntry,
+    PackManager.add_content)."""
+
+    SHADERPACK = "shaderpack"
+    RESOURCEPACK = "resourcepack"
+    DATAPACK = "datapack"
+    WORLD = "world"
+
+
+class ContentDownload(DownloadableFile):
+    kind: ContentKind
+
+
+class ContentEntry(BaseModel):
+    kind: ContentKind
+    name: str
+    """Kullanıcıya gösterilen ad — orijinal dosya/klasör adı (uzantısıyla)."""
+    stored_path: str
+    """PackManager.content_root(pack)'e göre saklandığı göreli yol."""
+    is_dir: bool = False
 
 
 class Pack(BaseModel):
@@ -94,6 +131,10 @@ class Pack(BaseModel):
     """Loader.VANILLA için boş bırakılır."""
     mods: list[ModEntry] = Field(default_factory=list)
     overrides: Overrides = Field(default_factory=Overrides)
+    content_downloads: list[ContentDownload] = Field(default_factory=list)
+    """Modrinth/CurseForge'tan aranıp eklenmiş shader/resourcepack/datapack."""
+    content: list[ContentEntry] = Field(default_factory=list)
+    """Yerelden yüklenmiş dünya(lar) (bkz. ContentKind.WORLD)."""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -102,6 +143,17 @@ class Pack(BaseModel):
 
     def find_mod(self, project_id: str) -> ModEntry | None:
         return next((m for m in self.mods if m.project_id == project_id), None)
+
+    def content_of(self, kind: ContentKind) -> list[ContentEntry]:
+        return [c for c in self.content if c.kind == kind]
+
+    def content_downloads_of(self, kind: ContentKind) -> list[ContentDownload]:
+        return [c for c in self.content_downloads if c.kind == kind]
+
+    def find_content_download(self, kind: ContentKind, project_id: str) -> ContentDownload | None:
+        return next(
+            (c for c in self.content_downloads if c.kind == kind and c.project_id == project_id), None
+        )
 
     @property
     def server_mods(self) -> list[ModEntry]:

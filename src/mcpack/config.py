@@ -45,7 +45,7 @@ class Settings(BaseModel):
     exclude_crash_reports: bool = True
     exclude_saves: bool = True
     theme: str = "dark"
-    """"dark" ya da "light" — bkz. gui/theme.py."""
+    """Tek desteklenen tema koyudur."""
 
     def resolved_packs_dir(self) -> Path:
         return Path(self.packs_dir) if self.packs_dir else default_packs_dir()
@@ -68,7 +68,9 @@ class Settings(BaseModel):
         if not path.exists():
             return cls()
         try:
-            return cls.model_validate_json(path.read_text(encoding="utf-8"))
+            settings = cls.model_validate_json(path.read_text(encoding="utf-8"))
+            settings.theme = "dark"
+            return settings
         except (json.JSONDecodeError, ValueError):
             return cls()
 

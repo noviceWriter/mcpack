@@ -13,7 +13,7 @@ import json
 import httpx
 
 from mcpack.downloader import RateLimiter, make_client
-from mcpack.models import EnvRequirement, Loader, ModSourceType
+from mcpack.models import ContentKind, EnvRequirement, Loader, ModSourceType
 from mcpack.sources.base import (
     ModDetail,
     ModSource,
@@ -25,6 +25,14 @@ from mcpack.sources.base import (
 )
 
 BASE_URL = "https://api.modrinth.com/v2"
+
+_PROJECT_TYPE = {
+    ContentKind.SHADERPACK: "shader",
+    ContentKind.RESOURCEPACK: "resourcepack",
+    ContentKind.DATAPACK: "datapack",
+}
+"""Modrinth'in search facet'lerindeki project_type değerleri (bkz.
+https://docs.modrinth.com/api/operations/searchprojects/)."""
 
 _DEPENDENCY_TYPE_MAP = {
     "required": "required",
@@ -68,13 +76,22 @@ class ModrinthClient(ModSource):
         *,
         game_version: str | None = None,
         loader: Loader | None = None,
+        content_kind: ContentKind | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[SearchResult]:
-        facets: list[list[str]] = [["project_type:mod"]]
+        if content_kind is not None and content_kind not in _PROJECT_TYPE:
+            # Modrinth'te karşılığı olmayan içerik türü (ör. ContentKind.WORLD
+            # — Modrinth'te "dünya/harita" diye bir proje türü yok, sadece
+            # CurseForge'ta var). Hata fırlatmak yerine sessizce boş dönülür.
+            return []
+        project_type = _PROJECT_TYPE.get(content_kind, "mod") if content_kind else "mod"
+        facets: list[list[str]] = [[f"project_type:{project_type}"]]
         if game_version:
             facets.append([f"versions:{game_version}"])
-        if loader and loader != Loader.VANILLA:
+        # Loader facet'i (fabric/forge/...) sadece mod kategorisi olarak
+        # anlamlı — shader/resourcepack/datapack'te loader kavramı yok.
+        if project_type == "mod" and loader and loader != Loader.VANILLA:
             facets.append([f"categories:{loader.value}"])
 
         params = {

@@ -1,5 +1,8 @@
-"""Açık/koyu tema QSS (proje-amacı.md §2.6 — "karanlık tema destekli olsun",
-kullanıcı isteğiyle açık tema da eklendi)."""
+"""MC Pack Manager için renk paletleri (açık ve koyu tema).
+
+color.md'de tanımlı renk paleti: tema seçimi için _CATEGORY_COLORS haricinde
+her şey burada. Kullanıcı geri bildirimi: düzeltme1.md.
+"""
 
 from __future__ import annotations
 
@@ -12,14 +15,14 @@ from __future__ import annotations
 # hiçbir zaman aynı anda/yan yana görünmediği için palet sırasını ikisi de
 # baştan kullanabildi; NeoForge'un CurseForge ile aynı turuncuyu paylaşması
 # bu yüzden çakışma yaratmıyor (ikisi de gerçek markasıyla örtüşüyor).
-_CATEGORY_COLORS: dict[str, dict[str, str]] = {
-    "modrinth": {"light": "#1baf7a", "dark": "#199e70"},  # slot 3 aqua/yeşil
-    "curseforge": {"light": "#eb6834", "dark": "#d95926"},  # slot 2 turuncu
-    "vanilla": {"light": "#6b7280", "dark": "#6b7280"},  # nötr gri — kategori değil, "loader yok" durumu
-    "fabric": {"light": "#eda100", "dark": "#c98500"},  # slot 4 sarı
-    "quilt": {"light": "#e87ba4", "dark": "#d55181"},  # slot 5 magenta
-    "forge": {"light": "#4a3aa7", "dark": "#9085e9"},  # slot 7 mor
-    "neoforge": {"light": "#eb6834", "dark": "#d95926"},  # slot 2 turuncu
+_CATEGORY_COLORS: dict[str, str] = {
+    "modrinth": "#199e70",
+    "curseforge": "#d95926",
+    "vanilla": "#6b7280",
+    "fabric": "#c98500",
+    "quilt": "#d55181",
+    "forge": "#9085e9",
+    "neoforge": "#d95926",
 }
 
 DARK_PALETTE = {
@@ -55,13 +58,10 @@ DARK_PALETTE = {
     "icon_placeholder_bg": "#2b2d31",
 }
 
-# düzeltme1.md'deki kullanıcı geri bildirimine göre kuruldu: solid koyu
-# lacivert seçim "çok sert kontrast" bulundu, yerine yumuşak mavi ton +
-# sol kenar şeridi istendi; ayrıca buton/uyarı kutusu renkleri netleştirildi.
-# Sadece açık tema için verildi, koyu tema kendi paletinde ayrı kalıyor.
+# Açık tema paleti - color.md'ye ve düzeltme1.md'ye göre
 LIGHT_PALETTE = {
     "accent": "#3b82f6",  # Canlı Mavi — birincil buton arka planı
-    "accent_dim": "#2563eb",  # birincil buton hover'ı / seçili öğe sol şeridi ile aynı aile
+    "accent_dim": "#2563eb",  # birincil buton hover'ı / seçili öğe sol şeridi
     "bg": "#f8f9fa",  # Ana arka plan (Body) — saf beyaz göz yorar
     "panel_bg": "#ffffff",  # Kart/Panel arka planı
     "field_bg": "#ffffff",
@@ -72,26 +72,25 @@ LIGHT_PALETTE = {
     "alt_row_bg": "#f9fafb",
     "scrollbar_handle": "#d1d5db",
     "scrollbar_handle_hover": "#9ca3af",
-    "selected_bg": "#eff6ff",  # Seçili öğe — çok açık, yumuşak mavi (solid lacivert DEĞİL)
+    "selected_bg": "#eff6ff",  # Seçili öğe — çok açık, yumuşak mavi
     "selected_text": "#1d4ed8",  # Koyu mavi, okunaklı
     "selected_stripe": "#3b82f6",  # Seçili öğenin sol kenarındaki 4px şerit
     "on_accent_text": "#ffffff",
     "disabled_text": "#9ca3af",
     "danger_text": "#ef4444",  # Tehlike/İptal metni
-    "status_good": "#16a34a",
+    "status_good": "#16a34a",  # dataviz skill durum paleti: good
     "status_warning": "#f97316",
-    "warning_box_bg": "#fef3c7",  # Uyarı/bilgi kutusu (ör. "Vanilla pack'lerde mod eklenemez")
+    "warning_box_bg": "#fef3c7",  # Uyarı/bilgi kutusu
     "warning_box_text": "#92400e",
-    "accent_purple": "#7c3aed",  # henüz UI'de kullanılmıyor (öne çıkan/kategori)
-    "accent_cyan": "#0891b2",  # henüz UI'de kullanılmıyor (info/tooltip)
-    "accent_pink": "#db2777",  # henüz UI'de kullanılmıyor (favori/popüler)
-    "button_border": "#d1d5db",  # ikincil buton kenarlığı (genel border'dan biraz daha belirgin)
+    "accent_purple": "#7c3aed",  # öne çıkan/kategori
+    "accent_cyan": "#0891b2",  # info/tooltip
+    "accent_pink": "#db2777",  # favori/popüler
+    "button_border": "#d1d5db",  # ikincil buton kenarlığı
     "button_hover_border": "#9ca3af",
     "chip_bg": "#f3f4f6",
     "chip_text": "#374151",
     "icon_placeholder_bg": "#f3f4f6",
 }
-
 
 def _build_stylesheet(p: dict[str, str]) -> str:
     return f"""
@@ -296,10 +295,6 @@ THEMES = {"dark": DARK_STYLESHEET, "light": LIGHT_STYLESHEET}
 PALETTES = {"dark": DARK_PALETTE, "light": LIGHT_PALETTE}
 
 _active_theme = "dark"
-"""Global QSS ile stillendirilemeyen, Python tarafında elle çizilen rozet/
-placeholder renkleri (bkz. chip_colors, icon_placeholder_bg) bu aktif
-temayı okur — aksi halde açık temada koyu renkli rozetler kalıp göze
-batardı (kullanıcı geri bildirimi: "beyaz tema çok kötü ürkünç olmuş")."""
 
 
 def set_active_theme(theme_name: str) -> None:
@@ -328,6 +323,22 @@ def status_good_color() -> str:
     return PALETTES[_active_theme]["status_good"]
 
 
+def danger_color() -> str:
+    return DARK_PALETTE["danger_text"]
+
+
+def pack_text_colors(selected: bool) -> tuple[str, str]:
+    palette = PALETTES[_active_theme]
+    if selected:
+        return palette["selected_text"], palette["selected_text"]
+    return palette["text"], palette["text_muted"]
+
+
+def pack_card_background(selected: bool) -> str:
+    palette = PALETTES[_active_theme]
+    return palette["selected_bg"] if selected else palette["panel_bg"]
+
+
 def apply_card_shadow(widget) -> None:
     """Panellere (QGroupBox'lar) referans tasarımdaki gibi hafif bir
     yükselti/gölge verir — QSS'in box-shadow'u olmadığı için
@@ -344,10 +355,10 @@ def apply_card_shadow(widget) -> None:
 
 
 def _category_color(key: str) -> str:
-    step = _CATEGORY_COLORS.get(key)
-    if step is None:
+    color = _CATEGORY_COLORS.get(key)
+    if color is None:
         return PALETTES[_active_theme]["text_muted"]
-    return step[_active_theme]
+    return color
 
 
 def source_color(value: str) -> str:

@@ -19,7 +19,10 @@ from mcpack.export.base import (
     EXCLUDED_OVERRIDE_DIR_NAMES,
     Exporter,
     ProgressCallback,
+    collect_content_download_files,
     collect_override_files,
+    collect_world_files,
+    ensure_mods_downloaded,
     write_zip,
 )
 from mcpack.models import Loader, ModEntry, Pack
@@ -73,19 +76,27 @@ class MrpackExporter(Exporter):
         source_dir: Path,
         output_path: Path,
         cache_dir: Path,
+        content_root: Path,
         client: httpx.AsyncClient,
         exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
         cancel_event=None,
     ) -> Path:
-        # .mrpack mod jar'larını indirmez (sadece URL referans eder), bu yüzden
-        # cancel_event burada kullanılmıyor — overrides toplama anlık bir işlem.
+        # .mrpack mod jar'larını indirmez (sadece URL referans eder) ama
+        # shader/resourcepack/datapack indirilip overrides/ altına gömülür
+        # (bkz. export/base.py:ensure_mods_downloaded) — bu yüzden cancel_event
+        # burada da geçerli.
         index = build_index(pack)
         override_files = collect_override_files(
             source_dir,
             pack.overrides.include,
             exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
         )
+        override_files += collect_world_files(pack, content_root)
+        downloaded_content = await ensure_mods_downloaded(
+            pack.content_downloads, cache_dir, client, progress_cb=progress_cb, cancel_event=cancel_event
+        )
+        override_files += collect_content_download_files(pack.content_downloads, downloaded_content)
         if progress_cb:
             progress_cb(1, 1)
         return write_zip(

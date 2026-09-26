@@ -20,12 +20,14 @@ from mcpack.export.base import (
     EXCLUDED_OVERRIDE_DIR_NAMES,
     Exporter,
     ProgressCallback,
+    collect_content_download_files,
     collect_override_files,
+    collect_world_files,
     ensure_mods_downloaded,
     write_zip,
 )
 from mcpack.known_mods import load_known_client_only_slugs
-from mcpack.models import ModEntry, ModSourceType, Pack
+from mcpack.models import ContentKind, ModEntry, ModSourceType, Pack
 
 
 def is_server_compatible(entry: ModEntry, known_client_only_slugs: set[str] | None = None) -> bool:
@@ -80,11 +82,17 @@ class ServerPackExporter(Exporter):
         source_dir: Path,
         output_path: Path,
         cache_dir: Path,
+        content_root: Path,
         client: httpx.AsyncClient,
         exclude_dirs: set[str] | None = None,
         progress_cb: ProgressCallback | None = None,
         cancel_event=None,
+        selected_world: str | None = None,
     ) -> Path:
+        """selected_world: pack.content'teki (ContentKind.WORLD, ad) eşleşen
+        dünya arşivde "world/" adıyla dahil edilir — sunucular tek bir dünya
+        klasörü bekler (bkz. gui/main_window.py'deki seçim akışı). None ise
+        hiç dünya dahil edilmez (kullanıcı istemedi ya da yüklü dünya yok)."""
         server_mods = filter_server_mods(pack)
         mod_files = await ensure_mods_downloaded(
             server_mods, cache_dir, client, progress_cb=progress_cb, cancel_event=cancel_event
@@ -95,6 +103,13 @@ class ServerPackExporter(Exporter):
             pack.overrides.include,
             exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
         )
+        # Shaderpack/resourcepack tamamen client-side'dır, sunucu için anlamsız
+        # — server pack'e sadece datapack ve (seçildiyse) dünya dahil edilir.
+        datapacks = pack.content_downloads_of(ContentKind.DATAPACK)
+        downloaded_datapacks = await ensure_mods_downloaded(datapacks, cache_dir, client, cancel_event=cancel_event)
+        override_files += collect_content_download_files(datapacks, downloaded_datapacks)
+        if selected_world is not None:
+            override_files += collect_world_files(pack, content_root, selected_world=selected_world)
 
         manifest_entries: list[tuple[str, str | bytes]] = []
         if self.include_start_scripts:

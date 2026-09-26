@@ -7,6 +7,8 @@ kurulumunu sessizce bozar) gerçek, güncel listelerden seçer.
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+
 import httpx
 
 from mcpack.models import Loader
@@ -14,7 +16,7 @@ from mcpack.models import Loader
 MODRINTH_TAG_URL = "https://api.modrinth.com/v2/tag/game_version"
 FABRIC_LOADER_URL = "https://meta.fabricmc.net/v2/versions/loader"
 QUILT_LOADER_URL = "https://meta.quiltmc.org/v3/versions/loader"
-FORGE_PROMOTIONS_URL = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
+FORGE_MAVEN_METADATA_URL = "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml"
 NEOFORGE_VERSIONS_URL = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
 
 
@@ -48,15 +50,38 @@ async def get_quilt_loader_versions(client: httpx.AsyncClient) -> list[str]:
 
 
 async def get_forge_versions(client: httpx.AsyncClient, minecraft_version: str) -> list[str]:
-    """Verilen Minecraft versiyonu için recommended/latest Forge versiyonları."""
-    data = await _get_json(client, FORGE_PROMOTIONS_URL, what="Forge versiyon listesi")
-    promos = data.get("promos", {})
-    versions: list[str] = []
-    for suffix in ("recommended", "latest"):
-        v = promos.get(f"{minecraft_version}-{suffix}")
-        if v and v not in versions:
-            versions.append(v)
-    return versions
+    """Verilen Minecraft versiyonu için TÜM Forge build numaraları (yeniden eskiye).
+
+    Önceden sadece promotions_slim.json'daki "recommended"/"latest" etiketli
+    (Forge ekibinin öne çıkardığı, en fazla 2 tane) build gösteriliyordu —
+    ör. 1.20.6 için gerçekte 84 build varken sadece 2'si listeleniyordu.
+    Gerçek tam katalog maven-metadata.xml'de, "<mc_versiyonu>-<build>" olarak.
+    """
+    try:
+        response = await client.get(FORGE_MAVEN_METADATA_URL)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise GameInfoError(f"Forge versiyon listesi alınamadı: {exc}") from exc
+
+    try:
+        root = ET.fromstring(response.text)
+    except ET.ParseError as exc:
+        raise GameInfoError(f"Forge versiyon listesi alınamadı: {exc}") from exc
+
+    prefix = f"{minecraft_version}-"
+    versions: set[str] = set()
+    for el in root.iterfind("./versioning/versions/version"):
+        text = (el.text or "").strip()
+        if text.startswith(prefix):
+            versions.add(text[len(prefix):])
+
+    def sort_key(v: str) -> tuple[int, ...]:
+        try:
+            return tuple(int(p) for p in v.split("."))
+        except ValueError:
+            return (0,)
+
+    return sorted(versions, key=sort_key, reverse=True)
 
 
 def _neoforge_prefix(minecraft_version: str) -> str:

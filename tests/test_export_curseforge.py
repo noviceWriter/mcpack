@@ -53,6 +53,7 @@ async def test_curseforge_export_embeds_non_cf_mods(tmp_path: Path):
                 source_dir=source_dir,
                 output_path=output_path,
                 cache_dir=tmp_path / "cache",
+                content_root=tmp_path / "content",
                 client=client,
             )
 

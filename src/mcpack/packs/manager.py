@@ -4,19 +4,58 @@ bağımlılık çözümleme (proje-amacı.md §2.2, Akış A/B).
 
 from __future__ import annotations
 
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 
+import httpx
+
+from mcpack.downloader import download_file
 from mcpack.known_mods import load_known_client_only_slugs
-from mcpack.models import EnvRequirement, Loader, ModEntry, ModEnv, ModHashes, ModSourceType, Pack
+from mcpack.models import (
+    ContentDownload,
+    ContentEntry,
+    ContentKind,
+    EnvRequirement,
+    Loader,
+    ModEntry,
+    ModEnv,
+    ModHashes,
+    ModSourceType,
+    Pack,
+)
 from mcpack.packs import storage
 from mcpack.sources.base import ModDetail, ModSource, ModVersion
 
+_CONTENT_SUBDIR: dict[ContentKind, str] = {
+    ContentKind.SHADERPACK: "shaderpacks",
+    ContentKind.RESOURCEPACK: "resourcepacks",
+    ContentKind.DATAPACK: "datapacks",
+    ContentKind.WORLD: "worlds",
+}
 
-def _version_to_entry(version: ModVersion, detail: ModDetail | None) -> ModEntry:
+
+def _downloadable_fields(version: ModVersion, detail: ModDetail | None) -> dict:
+    """ModEntry ve ContentDownload'ın ortak (DownloadableFile) alanları."""
     file = version.primary_file
     if file is None:
         raise ValueError(f"{version.name}: indirilebilir dosya bulunamadı")
 
+    return dict(
+        source=version.source,
+        project_id=version.project_id,
+        slug=detail.slug if detail is not None else None,
+        name=detail.title if detail is not None else None,
+        version_id=version.version_id,
+        file_name=file.file_name,
+        file_size=file.size,
+        hashes=ModHashes(sha1=file.sha1, sha512=file.sha512),
+        download_url=file.url,
+    )
+
+
+def _version_to_entry(version: ModVersion, detail: ModDetail | None) -> ModEntry:
     env = ModEnv()
     if detail is not None and detail.source == ModSourceType.MODRINTH:
         # Sadece Modrinth API'si client/server bilgisini güvenilir verir.
@@ -31,21 +70,25 @@ def _version_to_entry(version: ModVersion, detail: ModDetail | None) -> ModEntry
             env = ModEnv(client=EnvRequirement.REQUIRED, server=EnvRequirement.UNSUPPORTED)
 
     return ModEntry(
-        source=version.source,
-        project_id=version.project_id,
-        slug=detail.slug if detail is not None else None,
-        name=detail.title if detail is not None else None,
-        version_id=version.version_id,
-        file_name=file.file_name,
-        file_size=file.size,
-        hashes=ModHashes(sha1=file.sha1, sha512=file.sha512),
-        download_url=file.url,
+        **_downloadable_fields(version, detail),
         env=env,
         dependencies=[
             d.project_id for d in version.dependencies
             if d.dependency_type == "required" and d.project_id
         ],
     )
+
+
+def _detect_world_root(extract_dir: Path) -> Path:
+    """CurseForge'tan indirilen bir dünya ZIP'i genelde ya dünya dosyalarını
+    (level.dat vb.) doğrudan köke ya da tek bir alt klasöre koyar — ikisini
+    de dener, bulamazsa köşeye sıkışmamak için extract_dir'i olduğu gibi döner."""
+    if (extract_dir / "level.dat").exists():
+        return extract_dir
+    subdirs = [p for p in extract_dir.iterdir() if p.is_dir()]
+    if len(subdirs) == 1 and (subdirs[0] / "level.dat").exists():
+        return subdirs[0]
+    return extract_dir
 
 
 class PackManager:
@@ -91,6 +134,111 @@ class PackManager:
 
     def delete(self, pack_id: str) -> None:
         storage.delete_pack(pack_id, self.packs_dir)
+
+    def content_root(self, pack: Pack) -> Path:
+        """Pack'e yüklenmiş shader/resourcepack/datapack/dünya dosyalarının
+        gerçekten kopyalandığı klasör — mod jar'larının aksine bunlar bir
+        download_url'e değil, kullanıcının diskten seçtiği bir dosyaya karşılık
+        geldiği için export sırasında beklenen bir "source_dir" olmayabilir;
+        bu yüzden pack'in kendi kalıcı deposunda tutulur."""
+        return self.packs_dir / "content" / pack.id
+
+    def add_content(
+        self, pack: Pack, kind: ContentKind, source_path: Path, *, display_name: str | None = None
+    ) -> ContentEntry:
+        """source_path'i (dosya ya da klasör) pack'in kendi içerik deposuna
+        kopyalar ve pack.content'e ekler. Aynı kind+ad zaten varsa üzerine yazar
+        (add_mod'daki project_id tekilleştirmesiyle aynı mantık).
+
+        display_name: verilirse pack.content'teki ad (ve dolayısıyla export'taki
+        klasör adı) source_path'in gerçek dosya adı yerine bunu kullanır — ör.
+        CurseForge'tan indirilip geçici bir klasöre açılan bir dünyaya asıl
+        proje adını vermek için (bkz. add_world_from_download)."""
+        name = display_name or source_path.name
+        dest_dir = self.content_root(pack) / _CONTENT_SUBDIR[kind]
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / name
+        is_dir = source_path.is_dir()
+        if is_dir:
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(source_path, dest)
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, dest)
+
+        pack.content = [c for c in pack.content if not (c.kind == kind and c.name == name)]
+        entry = ContentEntry(
+            kind=kind,
+            name=name,
+            stored_path=str(dest.relative_to(self.content_root(pack))),
+            is_dir=is_dir,
+        )
+        pack.content.append(entry)
+        self.save(pack)
+        return entry
+
+    def remove_content(self, pack: Pack, kind: ContentKind, name: str) -> None:
+        entry = next((c for c in pack.content if c.kind == kind and c.name == name), None)
+        if entry is None:
+            return
+        path = self.content_root(pack) / entry.stored_path
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+        pack.content = [c for c in pack.content if not (c.kind == kind and c.name == name)]
+        self.save(pack)
+
+    async def add_world_from_download(
+        self,
+        pack: Pack,
+        version: ModVersion,
+        client: httpx.AsyncClient,
+        *,
+        detail: ModDetail | None = None,
+    ) -> ContentEntry:
+        """CurseForge'ta aranıp bulunan hazır bir dünyayı (harita) indirir,
+        ZIP'ini açar ve normal bir yerel dünya gibi content_root'a kopyalar
+        (bkz. add_content) — diğer indirilebilir içeriklerden (bkz.
+        add_content_download) farkı: dünya export sırasında gömülecek tek bir
+        dosya değil, saves/<ad>/ altına açılması gereken bir klasördür, bu
+        yüzden indirme burada (ekleme anında) yapılır, export'ta değil."""
+        file = version.primary_file
+        if file is None:
+            raise ValueError(f"{version.name}: indirilebilir dosya bulunamadı")
+
+        with tempfile.TemporaryDirectory(prefix="mcpack-world-") as tmp:
+            tmp_path = Path(tmp)
+            zip_path = tmp_path / file.file_name
+            await download_file(client, file.url, zip_path, sha1=file.sha1, sha512=file.sha512)
+            extract_dir = tmp_path / "extracted"
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(extract_dir)
+            world_root = _detect_world_root(extract_dir)
+            display_name = detail.title if detail is not None else version.name
+            return self.add_content(pack, ContentKind.WORLD, world_root, display_name=display_name)
+
+    def add_content_download(
+        self, pack: Pack, kind: ContentKind, version: ModVersion, detail: ModDetail | None = None
+    ) -> ContentDownload:
+        """add_mod ile birebir aynı akış — shader/resourcepack/datapack da
+        Modrinth/CurseForge'tan arayıp eklenir (kullanıcı isteği: "yine mod
+        yükler gibi"). Dünyanın aksine (bkz. add_content) gerçek dosya export
+        sırasında indirilir, burada sadece referans (ContentDownload) saklanır."""
+        entry = ContentDownload(kind=kind, **_downloadable_fields(version, detail))
+        existing = pack.find_content_download(kind, entry.project_id)
+        if existing:
+            pack.content_downloads.remove(existing)
+        pack.content_downloads.append(entry)
+        self.save(pack)
+        return entry
+
+    def remove_content_download(self, pack: Pack, kind: ContentKind, project_id: str) -> None:
+        pack.content_downloads = [
+            c for c in pack.content_downloads if not (c.kind == kind and c.project_id == project_id)
+        ]
+        self.save(pack)
 
     def add_mod(self, pack: Pack, version: ModVersion, detail: ModDetail | None = None) -> ModEntry:
         entry = _version_to_entry(version, detail)

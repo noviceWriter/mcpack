@@ -14,7 +14,7 @@ from __future__ import annotations
 import httpx
 
 from mcpack.downloader import make_client
-from mcpack.models import Loader, ModSourceType
+from mcpack.models import ContentKind, Loader, ModSourceType
 from mcpack.sources.base import (
     ModDetail,
     ModSource,
@@ -28,6 +28,15 @@ from mcpack.sources.base import (
 BASE_URL = "https://api.curseforge.com"
 MINECRAFT_GAME_ID = 432
 MOD_CLASS_ID = 6
+
+_CLASS_ID = {
+    ContentKind.SHADERPACK: 6552,
+    ContentKind.RESOURCEPACK: 12,
+    ContentKind.DATAPACK: 6945,
+    ContentKind.WORLD: 17,
+}
+"""CurseForge Minecraft (gameId 432) alt kategori classId'leri
+(https://api.curseforge.com/v1/categories?gameId=432 ile doğrulandı)."""
 
 _LOADER_TO_CF = {
     Loader.FORGE: 1,
@@ -93,19 +102,22 @@ class CurseForgeClient(ModSource):
         *,
         game_version: str | None = None,
         loader: Loader | None = None,
+        content_kind: ContentKind | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[SearchResult]:
+        class_id = _CLASS_ID.get(content_kind, MOD_CLASS_ID) if content_kind else MOD_CLASS_ID
         params: dict[str, str | int] = {
             "gameId": MINECRAFT_GAME_ID,
-            "classId": MOD_CLASS_ID,
+            "classId": class_id,
             "searchFilter": query,
             "pageSize": limit,
             "index": offset,
         }
         if game_version:
             params["gameVersion"] = game_version
-        if loader and loader in _LOADER_TO_CF:
+        # modLoaderType sadece mod aramasında anlamlı.
+        if class_id == MOD_CLASS_ID and loader and loader in _LOADER_TO_CF:
             params["modLoaderType"] = _LOADER_TO_CF[loader]
 
         response = await self._get("/v1/mods/search", params=params)

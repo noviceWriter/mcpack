@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from mcpack.downloader import make_client
 from mcpack.gameinfo import get_loader_versions, get_minecraft_versions
+from mcpack.gui.theme import danger_color
 from mcpack.gui.widgets import run_async
 from mcpack.models import Loader
 
@@ -57,7 +58,7 @@ class NewPackDialog(QDialog):
         self.loader_version_combo.setEnabled(False)
 
         self.error_label = QLabel("")
-        self.error_label.setStyleSheet("color: #e06060;")
+        self.error_label.setStyleSheet(f"color: {danger_color()};")
         self.error_label.setWordWrap(True)
         self.error_label.hide()
 

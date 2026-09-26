@@ -12,7 +12,8 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QUrl, Qt
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -38,7 +39,7 @@ from mcpack.gui.settings_dialog import SettingsDialog
 from mcpack.gui.theme import set_active_theme, stylesheet_for
 from mcpack.gui.widgets import PackDetailPanel, PackListPanel, run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
-from mcpack.models import EnvRequirement, Loader, ModSourceType, Pack
+from mcpack.models import ContentKind, EnvRequirement, ModSourceType, Pack
 from mcpack.packs import PackManager
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
 from mcpack.sources.base import ModDetail, ModVersion, SearchResult
@@ -113,6 +114,10 @@ class MainWindow(QMainWindow):
         settings_button.clicked.connect(self.open_settings_dialog)
         toolbar.addWidget(settings_button)
 
+        data_button = QPushButton("Veri Klasörünü Aç")
+        data_button.clicked.connect(self.open_data_folder)
+        toolbar.addWidget(data_button)
+
     def _build_status_bar(self) -> None:
         """Export/server pack/SKLauncher ilerlemesi burada gösterilir — CurseForge/
         Prism'de de indirme ilerlemesi ayrı bir panel değil, alt durum çubuğundadır."""
@@ -135,6 +140,7 @@ class MainWindow(QMainWindow):
 
     def _wire_signals(self) -> None:
         self.pack_list.new_pack_requested.connect(self.create_pack_dialog)
+        self.pack_list.delete_pack_requested.connect(self.delete_pack)
         self.pack_list.pack_selected.connect(self.select_pack)
         self.pack_detail.remove_mod_requested.connect(self.remove_mod)
         self.pack_detail.edit_env_requested.connect(self.edit_mod_env)
@@ -166,6 +172,28 @@ class MainWindow(QMainWindow):
     def reload_packs(self) -> None:
         self.pack_list.set_packs(self.manager.list_packs())
 
+    def open_data_folder(self) -> None:
+        data_dir = self.settings.resolved_packs_dir()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(data_dir)))
+
+    def delete_pack(self, pack_id: str) -> None:
+        pack = self.manager.load(pack_id)
+        answer = QMessageBox.question(
+            self,
+            "Pack'i Sil",
+            f"'{pack.name}' pack'i kalıcı olarak silinsin mi?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.manager.delete(pack_id)
+        if self.current_pack is not None and self.current_pack.id == pack_id:
+            self.current_pack = None
+            self.pack_detail.show_pack(None)
+        self.reload_packs()
+
     def create_pack_dialog(self) -> None:
         dialog = NewPackDialog(self)
         if dialog.exec() != NewPackDialog.DialogCode.Accepted:
@@ -194,6 +222,22 @@ class MainWindow(QMainWindow):
             return
         self.manager.remove_mod(self.current_pack, project_id)
         self.pack_detail.show_pack(self.current_pack)
+
+    def add_world(self, path: str) -> None:
+        if self.current_pack is None:
+            return
+        entry = self.manager.add_content(self.current_pack, ContentKind.WORLD, Path(path))
+        if self._mod_search_dialog is not None:
+            self._mod_search_dialog.refresh_content(self.current_pack)
+        self.set_status(f"{entry.name} eklendi.")
+
+    def remove_world(self, name: str) -> None:
+        if self.current_pack is None:
+            return
+        self.manager.remove_content(self.current_pack, ContentKind.WORLD, name)
+        if self._mod_search_dialog is not None:
+            self._mod_search_dialog.refresh_content(self.current_pack)
+        self.set_status(f"{name} kaldırıldı.")
 
     def edit_mod_env(self, project_id: str) -> None:
         """CurseForge gibi kaynaklar client/server bilgisini güvenilir vermeyebilir;
@@ -232,11 +276,13 @@ class MainWindow(QMainWindow):
         return ModrinthClient()
 
     def open_mod_search_dialog(self) -> None:
+        """Mod arama + shader/dünya/datapack/görüntü paketi ekleme penceresi.
+
+        Vanilla pack'lerde mod arama sekmesi olmaz (loader gerektirir) ama
+        shader/dünya/datapack/görüntü paketi bir loader gerektirmediği için
+        vanilla pack'ler de bu pencereyi açabilir (bkz. ModSearchDialog.is_vanilla)."""
         if not self.current_pack:
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
-            return
-        if self.current_pack.loader == Loader.VANILLA:
-            QMessageBox.information(self, "Bilgi", "Vanilla pack'lere mod eklenemez.")
             return
 
         if self._mod_search_dialog is not None:
@@ -245,17 +291,46 @@ class MainWindow(QMainWindow):
             return
 
         dialog = ModSearchDialog(self.current_pack, self)
-        dialog.search_panel.search_requested.connect(self.do_search)
-        dialog.search_panel.add_mod_requested.connect(self.add_mod)
+        dialog.world_added.connect(self.add_world)
+        dialog.world_removed.connect(self.remove_world)
         dialog.finished.connect(self._on_mod_search_dialog_closed)
-        dialog.search_panel.set_added_project_ids({m.project_id for m in self.current_pack.mods})
         self._mod_search_dialog = dialog
+
+        if dialog.search_panel is not None:
+            dialog.search_panel.search_requested.connect(self.do_search)
+            dialog.search_panel.add_mod_requested.connect(self.add_mod)
+            dialog.search_panel.set_added_project_ids({m.project_id for m in self.current_pack.mods})
+
+        for kind, panel in dialog.content_search_panels.items():
+            panel.search_requested.connect(
+                lambda q, s, o, k=kind: self.do_content_search(k, q, s, o)
+            )
+            panel.add_mod_requested.connect(
+                lambda result, k=kind: self.add_content_download_result(k, result)
+            )
+            panel.set_added_project_ids({c.project_id for c in self.current_pack.content_downloads_of(kind)})
+
+        dialog.world_search_panel.search_requested.connect(
+            lambda q, s, o: self.do_content_search(ContentKind.WORLD, q, s, o)
+        )
+        dialog.world_search_panel.add_mod_requested.connect(self.add_world_download_result)
+
         dialog.show()
 
-        # CurseForge/Modrinth App gibi: pencere açılır açılmaz, arama
-        # yazılmasını beklemeden popüler modları listele (indirme sayısına
-        # göre sıralı gelir — boş sorgu Modrinth/CurseForge'ta geçerlidir).
-        self.do_search("", dialog.search_panel.source_combo.currentData(), 0)
+        if dialog.search_panel is not None:
+            # CurseForge/Modrinth App gibi: pencere açılır açılmaz, arama
+            # yazılmasını beklemeden popüler modları listele (indirme sayısına
+            # göre sıralı gelir — boş sorgu Modrinth/CurseForge'ta geçerlidir).
+            self.do_search("", dialog.search_panel.source_combo.currentData(), 0)
+        for kind, panel in dialog.content_search_panels.items():
+            self.do_content_search(kind, "", panel.source_combo.currentData(), 0)
+        if self.settings.curseforge_api_key:
+            # Dünya sadece CurseForge'ta aranabiliyor (bkz. SearchPanel
+            # curseforge_only) — key yoksa açılışta otomatik arama tetiklenmez,
+            # aksi halde pencere her açıldığında hata popup'ı çıkardı.
+            self.do_content_search(
+                ContentKind.WORLD, "", dialog.world_search_panel.source_combo.currentData(), 0
+            )
 
     def _on_mod_search_dialog_closed(self) -> None:
         self._mod_search_dialog = None
@@ -304,8 +379,61 @@ class MainWindow(QMainWindow):
         )
 
     def _on_search_done(self, results: list[SearchResult], *, append: bool) -> None:
-        if self._mod_search_dialog is not None:
+        if self._mod_search_dialog is not None and self._mod_search_dialog.search_panel is not None:
             self._mod_search_dialog.search_panel.set_results(results, append=append)
+        self.set_status("Hazır")
+
+    def do_content_search(self, kind: ContentKind, query: str, source_name: str, offset: int = 0) -> None:
+        """do_search'ün shader/datapack/görüntü paketi karşılığı — aynı akış,
+        sadece content_kind ile Modrinth/CurseForge'a farklı bir proje türü
+        (shader/resourcepack/datapack) sorgulanır, loader facet'i kullanılmaz."""
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+
+        async def task() -> list[SearchResult]:
+            if source_name == "both":
+                modrinth = ModrinthClient()
+                curseforge = (
+                    CurseForgeClient(self.settings.curseforge_api_key)
+                    if self.settings.curseforge_api_key
+                    else None
+                )
+                try:
+                    return await search_all(
+                        query,
+                        modrinth=modrinth,
+                        curseforge=curseforge,
+                        game_version=pack.minecraft,
+                        content_kind=kind,
+                        offset=offset,
+                        prefer_modrinth=self.settings.prefer_modrinth,
+                    )
+                finally:
+                    await modrinth.aclose()
+                    if curseforge:
+                        await curseforge.aclose()
+
+            source = self._make_source(source_name)
+            try:
+                return await source.search(
+                    query, game_version=pack.minecraft, content_kind=kind, offset=offset
+                )
+            finally:
+                await source.aclose()
+
+        self.set_status("Aranıyor..." if offset == 0 else "Daha fazla yükleniyor...")
+        run_async(
+            task,
+            on_success=lambda results: self._on_content_search_done(kind, results, append=offset > 0),
+            on_error=self._on_error,
+        )
+
+    def _on_content_search_done(self, kind: ContentKind, results: list[SearchResult], *, append: bool) -> None:
+        if self._mod_search_dialog is not None:
+            panel = self._mod_search_dialog.content_search_panels.get(kind)
+            if panel is not None:
+                panel.set_results(results, append=append)
         self.set_status("Hazır")
 
     def add_mod(self, result: SearchResult) -> None:
@@ -366,12 +494,77 @@ class MainWindow(QMainWindow):
             self.pack_detail.show_pack(self.current_pack)
             self._refresh_added_markers()
 
-    def _refresh_added_markers(self) -> None:
-        """Mod Ekle penceresi açıksa, az önce eklenen mod(lar) oradaki
-        listede de anında "Eklendi" olarak işaretlensin."""
+    def add_content_download_result(self, kind: ContentKind, result: SearchResult) -> None:
+        """add_mod'un shader/datapack/görüntü paketi karşılığı — bağımlılık
+        çözümlemesi/env yok, sadece seçilen versiyon pack.content_downloads'a eklenir
+        (gerçek dosya export sırasında indirilir, bkz. export/base.py)."""
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+
+        if pack.find_content_download(kind, result.project_id) is not None:
+            self.set_status(f"{result.title} zaten pack'te.")
+            return
+
+        async def task() -> None:
+            source = self._make_source(result.source.value)
+            try:
+                detail = await source.get_project(result.project_id)
+                versions = await source.get_versions(result.project_id, game_version=pack.minecraft)
+                if not versions:
+                    raise RuntimeError(f"{result.title}: {pack.minecraft} için uyumlu versiyon yok")
+                self.manager.add_content_download(pack, kind, versions[0], detail)
+            finally:
+                await source.aclose()
+
+        self.set_status(f"{result.title} ekleniyor...")
+        run_async(task, on_success=lambda _: self._on_content_download_added(kind), on_error=self._on_error)
+
+    def add_world_download_result(self, result: SearchResult) -> None:
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+
+        async def task() -> None:
+            source = self._make_source(result.source.value)
+            try:
+                detail = await source.get_project(result.project_id)
+                versions = await source.get_versions(result.project_id, game_version=pack.minecraft)
+                if not versions:
+                    raise RuntimeError(f"{result.title}: {pack.minecraft} için uyumlu versiyon yok")
+                async with make_client() as client:
+                    await self.manager.add_world_from_download(
+                        pack, versions[0], client, detail=detail
+                    )
+            finally:
+                await source.aclose()
+
+        self.set_status(f"{result.title} indiriliyor...")
+        run_async(task, on_success=self._on_world_download_added, on_error=self._on_error)
+
+    def _on_world_download_added(self) -> None:
+        self.pack_detail.show_pack(self.current_pack)
         if self._mod_search_dialog is not None and self.current_pack is not None:
+            self._mod_search_dialog.refresh_content(self.current_pack)
+        self.set_status("Dünya eklendi")
+
+    def _on_content_download_added(self, kind: ContentKind) -> None:
+        self.pack_detail.show_pack(self.current_pack)
+        self.set_status("Eklendi")
+        self._refresh_added_markers()
+
+    def _refresh_added_markers(self) -> None:
+        """Mod Ekle penceresi açıksa, az önce eklenen mod/shader/datapack/
+        görüntü paketi oradaki listede de anında "Eklendi" olarak işaretlensin."""
+        if self._mod_search_dialog is None or self.current_pack is None:
+            return
+        if self._mod_search_dialog.search_panel is not None:
             self._mod_search_dialog.search_panel.set_added_project_ids(
                 {m.project_id for m in self.current_pack.mods}
+            )
+        for kind, panel in self._mod_search_dialog.content_search_panels.items():
+            panel.set_added_project_ids(
+                {c.project_id for c in self.current_pack.content_downloads_of(kind)}
             )
 
     # -- export / server pack / sklauncher -----------------------------------
@@ -407,7 +600,7 @@ class MainWindow(QMainWindow):
         exporter_cls = _FORMAT_EXPORTERS[format_key]
 
         output_path, _ = QFileDialog.getSaveFileName(
-            self, "Export Et", f"{pack.name}{exporter_cls.file_extension}", f"*{exporter_cls.file_extension}"
+            self, "Dışa Aktar", f"{pack.name}{exporter_cls.file_extension}", f"*{exporter_cls.file_extension}"
         )
         if not output_path:
             return
@@ -421,13 +614,12 @@ class MainWindow(QMainWindow):
                     source_dir=source_dir,
                     output_path=Path(output_path),
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
+                    content_root=self.manager.content_root(pack),
                     client=client,
                     exclude_dirs=self.settings.excluded_override_dirs(),
                     progress_cb=self.set_progress,
                     cancel_event=cancel_event,
                 )
-
-        self.set_status("Export ediliyor...")
 
         def on_success(p: Path) -> None:
             self._end_cancellable_task()
@@ -437,7 +629,47 @@ class MainWindow(QMainWindow):
             self._end_cancellable_task()
             self._on_error(message)
 
+        self.set_status("Dışa aktarılıyor...")
         run_async(task, on_success=on_success, on_error=on_error)
+
+    def _ask_server_pack_world(self, pack: Pack) -> str | None:
+        """Pack'e yüklenmiş dünya varsa kullanıcıya sorar; evet derse yüklü
+        dünyalardan TEK birini seçtirir ve onaylatır. Seçilen dünya export'ta
+        "world/" adıyla (orijinal adı değil) pakete eklenir — sunucular tek
+        bir dünya klasörü bekler. Dünya yoksa ya da kullanıcı istemezse None
+        döner (dünya dahil edilmez)."""
+        worlds = pack.content_of(ContentKind.WORLD)
+        if not worlds:
+            return None
+
+        answer = QMessageBox.question(
+            self,
+            "Dünya Ekle",
+            "Bu pack'e yüklenmiş dünya var. Sunucu paketine bir dünya eklemek ister misiniz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return None
+
+        names = [w.name for w in worlds]
+        if len(names) == 1:
+            name = names[0]
+        else:
+            name, ok = QInputDialog.getItem(
+                self, "Dünya Seç", "Sunucu paketine eklenecek dünyayı seçin:", names, 0, False
+            )
+            if not ok or not name:
+                return None
+
+        confirm = QMessageBox.question(
+            self,
+            "Dünyayı Onayla",
+            f"'{name}' dünyası pakette \"world\" adıyla dışa aktarılacak. Onaylıyor musunuz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        return name if confirm == QMessageBox.StandardButton.Yes else None
 
     def do_server_pack(self) -> None:
         if not self.current_pack:
@@ -445,7 +677,9 @@ class MainWindow(QMainWindow):
             return
         pack = self.current_pack
 
-        output_path, _ = QFileDialog.getSaveFileName(self, "Server Pack Oluştur", f"{pack.name}-server.zip", "*.zip")
+        selected_world = self._ask_server_pack_world(pack)
+
+        output_path, _ = QFileDialog.getSaveFileName(self, "Sunucu Paketi Oluştur", f"{pack.name}-server.zip", "*.zip")
         if not output_path:
             return
         source_dir = self._pick_source_dir()
@@ -458,22 +692,23 @@ class MainWindow(QMainWindow):
                     source_dir=source_dir,
                     output_path=Path(output_path),
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
+                    content_root=self.manager.content_root(pack),
                     client=client,
                     exclude_dirs=self.settings.excluded_override_dirs(),
                     progress_cb=self.set_progress,
                     cancel_event=cancel_event,
+                    selected_world=selected_world,
                 )
-
-        self.set_status("Server pack oluşturuluyor...")
 
         def on_success(p: Path) -> None:
             self._end_cancellable_task()
-            self.set_status(f"Server pack hazır: {p}")
+            self.set_status(f"Sunucu paketi hazır: {p}")
 
         def on_error(message: str) -> None:
             self._end_cancellable_task()
             self._on_error(message)
 
+        self.set_status("Sunucu paketi oluşturuluyor...")
         run_async(task, on_success=on_success, on_error=on_error)
 
     def do_run_sklauncher(self) -> None:
@@ -495,6 +730,7 @@ class MainWindow(QMainWindow):
                     source_dir=source_dir,
                     instances_dir=instances_dir,
                     cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
+                    content_root=self.manager.content_root(pack),
                     client=client,
                     exclude_dirs=self.settings.excluded_override_dirs(),
                     progress_cb=self.set_progress,

@@ -43,6 +43,7 @@ async def test_mrpack_export_writes_index_and_overrides(tmp_path: Path):
             source_dir=source_dir,
             output_path=output_path,
             cache_dir=tmp_path / "cache",
+            content_root=tmp_path / "content",
             client=client,
         )
 

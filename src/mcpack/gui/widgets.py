@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -43,7 +44,7 @@ from mcpack.gui.theme import (
     source_color,
     status_good_color,
 )
-from mcpack.models import ModEntry, ModSourceType, Pack
+from mcpack.models import ContentKind, ModEntry, ModSourceType, Pack
 from mcpack.sources.base import SearchResult
 
 # ---------------------------------------------------------------------------
@@ -326,6 +327,13 @@ class PackListPanel(QWidget):
         self.list_widget = QListWidget()
         self.list_widget.setAlternatingRowColors(True)
         self.list_widget.setSpacing(2)
+        # Öğelerin görünümü tamamen _PackCard'tan gelir (item.text() hiç
+        # kullanılmaz, hep boş) — ama QListWidgetItem varsayılan olarak
+        # düzenlenebilir (ItemIsEditable) ve view'ın varsayılan edit trigger'ları
+        # (çift tık / F2) bu boş metin için bir QLineEdit editörü açardı. O
+        # editör _PackCard'ın üzerinde küçük, boş bir beyaz kutu olarak kalıcı
+        # görünüyordu (kullanıcı geri bildirimi: "pack listesinde bozukluk var").
+        self.list_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.list_widget.currentRowChanged.connect(self._on_row_changed)
         layout.addWidget(self.list_widget)
 
@@ -345,6 +353,7 @@ class PackListPanel(QWidget):
         self.list_widget.clear()
         for pack in packs:
             item = QListWidgetItem()
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             card = _PackCard(pack)
             self._cards.append(card)
             item.setSizeHint(card.sizeHint())
@@ -382,6 +391,13 @@ _MOD_SORT_KEYS: dict[int, Callable[[ModEntry], str]] = {
     2: lambda m: _environment_label(m.env.client.value, m.env.server.value),  # Ortam
 }
 
+_CONTENT_KIND_LABELS: dict[ContentKind, str] = {
+    ContentKind.SHADERPACK: "Shader",
+    ContentKind.RESOURCEPACK: "Görüntü Paketi",
+    ContentKind.DATAPACK: "Datapack",
+    ContentKind.WORLD: "Dünya",
+}
+
 
 class PackDetailPanel(QWidget):
     remove_mod_requested = Signal(str)
@@ -392,6 +408,8 @@ class PackDetailPanel(QWidget):
     export_requested = Signal(str)  # format key: mrpack/curseforge/prism
     server_pack_requested = Signal()
     run_sklauncher_requested = Signal()
+    remove_content_download_requested = Signal(object, str)  # ContentKind, project_id
+    remove_world_requested = Signal(str)  # dünya adı
 
     def __init__(self) -> None:
         super().__init__()
@@ -445,6 +463,19 @@ class PackDetailPanel(QWidget):
 
         outer.addLayout(header)
 
+        # Mod listesi ve shader/dünya/datapack/görüntü paketi listesi ayrı
+        # sekmelerde — ikincisi eskiden hiçbir yerde gösterilmiyordu, sadece
+        # Mod Ekle penceresinin kendi sekmelerinde "zaten eklendi" işareti
+        # olarak görünüyordu (kullanıcı geri bildirimi: "program sadece
+        # modları gösteriyor, seçili olanları da göstermeli").
+        self.tabs = QTabWidget()
+        outer.addWidget(self.tabs, 1)
+
+        mods_page = QWidget()
+        mods_layout = QVBoxLayout(mods_page)
+        mods_layout.setContentsMargins(0, 8, 0, 0)
+        self.tabs.addTab(mods_page, "Modlar")
+
         table_options_row = QHBoxLayout()
         self.mod_filter_input = QLineEdit()
         self.mod_filter_input.setPlaceholderText("Yüklü modlarda ara...")
@@ -458,7 +489,7 @@ class PackDetailPanel(QWidget):
         self.show_file_names_checkbox = QCheckBox("Dosya adlarını göster")
         self.show_file_names_checkbox.toggled.connect(self._on_show_file_names_toggled)
         table_options_row.addWidget(self.show_file_names_checkbox)
-        outer.addLayout(table_options_row)
+        mods_layout.addLayout(table_options_row)
 
         # Sıralama: ayrı bir kutu yerine "Mod / Kaynak / Ortam" başlıklarına
         # tıklanarak yapılır (kullanıcı isteği) — QTableWidget'ın kendi
@@ -479,7 +510,7 @@ class PackDetailPanel(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        outer.addWidget(self.table, 1)
+        mods_layout.addWidget(self.table, 1)
 
         # Boş durum: pack'te hiç mod yoksa boş bir tablo göstermek yerine
         # "Mod Ekle" eylem çağrısı içeren bir kart gösterilir.
@@ -504,14 +535,14 @@ class PackDetailPanel(QWidget):
         empty_cta.clicked.connect(self.add_mod_clicked.emit)
         empty_layout.addWidget(empty_cta, alignment=Qt.AlignmentFlag.AlignCenter)
         self.empty_state.hide()
-        outer.addWidget(self.empty_state, 1)
+        mods_layout.addWidget(self.empty_state, 1)
 
         # Arama/filtre hiçbir moda uymazsa (pack boş değil ama sonuç boş).
         self.filter_empty_notice = QLabel("")
         self.filter_empty_notice.setProperty("role", "muted")
         self.filter_empty_notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.filter_empty_notice.hide()
-        outer.addWidget(self.filter_empty_notice)
+        mods_layout.addWidget(self.filter_empty_notice)
 
         self.mod_actions_bar = QWidget()
         button_row = QHBoxLayout(self.mod_actions_bar)
@@ -530,31 +561,74 @@ class PackDetailPanel(QWidget):
         env_button.clicked.connect(self._on_edit_env_clicked)
         button_row.addWidget(env_button)
         button_row.addStretch()
-        outer.addWidget(self.mod_actions_bar)
+        mods_layout.addWidget(self.mod_actions_bar)
 
         self.vanilla_notice = QLabel(
             "⚠ Vanilla pack'lerde mod eklenemez — mod eklemek için bir loader (Fabric/Quilt/Forge/NeoForge) seçin.\n"
-            "Shader, dünya, datapack ve görüntü paketi bir loader gerektirmez, aşağıdan eklenebilir."
+            "Shader, dünya, datapack ve görüntü paketi bir loader gerektirmez, \"Diğer İçerikler\" sekmesinden eklenebilir."
         )
         self.vanilla_notice.setObjectName("warningBox")
         self.vanilla_notice.setWordWrap(True)
         self.vanilla_notice.hide()
-        outer.addWidget(self.vanilla_notice)
+        mods_layout.addWidget(self.vanilla_notice)
+        mods_layout.addStretch()  # uyarı kutusu dikey boşluğu doldurup dev bir bloğa dönüşmesin
 
-        # Vanilla pack'lerde "+ Mod Ekle" (mod_actions_bar) gizli olduğu için
-        # aynı pencereyi (Mod Ekle diyaloğu, artık shader/dünya/datapack/
-        # görüntü paketi sekmelerini de içeriyor) açacak ayrı bir giriş noktası.
-        self.vanilla_content_bar = QWidget()
-        vanilla_content_layout = QHBoxLayout(self.vanilla_content_bar)
-        vanilla_content_layout.setContentsMargins(0, 0, 0, 0)
-        vanilla_content_button = QPushButton("+ Shader / Dünya / Datapack / Görüntü Paketi")
-        vanilla_content_button.setObjectName("primary")
-        vanilla_content_button.clicked.connect(self.add_mod_clicked.emit)
-        vanilla_content_layout.addWidget(vanilla_content_button)
-        vanilla_content_layout.addStretch()
-        self.vanilla_content_bar.hide()
-        outer.addWidget(self.vanilla_content_bar)
-        outer.addStretch()  # uyarı kutusu dikey boşluğu doldurup dev bir bloğa dönüşmesin
+        # -- "Diğer İçerikler" sekmesi: shader/resourcepack/datapack (online
+        # aranıp eklenen) + dünya (diskten yüklenen) — hepsi tek listede,
+        # kaldırma da buradan yapılabilir (bkz. _on_remove_content_clicked).
+        content_page = QWidget()
+        content_layout = QVBoxLayout(content_page)
+        content_layout.setContentsMargins(0, 8, 0, 0)
+        self.tabs.addTab(content_page, "Diğer İçerikler")
+
+        self.content_table = QTableWidget(0, 3)
+        self.content_table.setHorizontalHeaderLabels(["İçerik", "Tür", "Kaynak"])
+        self.content_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.content_table.setColumnWidth(1, 140)
+        self.content_table.setColumnWidth(2, 140)
+        self.content_table.verticalHeader().setVisible(False)
+        self.content_table.setAlternatingRowColors(True)
+        self.content_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.content_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        content_layout.addWidget(self.content_table, 1)
+
+        self.content_empty_state = QWidget()
+        content_empty_layout = QVBoxLayout(self.content_empty_state)
+        content_empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        content_empty_layout.setSpacing(6)
+        content_empty_icon = QLabel("🎨")
+        content_empty_icon.setStyleSheet("font-size: 36px;")
+        content_empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        content_empty_layout.addWidget(content_empty_icon)
+        content_empty_title = QLabel("Henüz shader, dünya, datapack ya da görüntü paketi eklenmemiş")
+        content_empty_title.setStyleSheet("font-size: 15px; font-weight: 600;")
+        content_empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        content_empty_layout.addWidget(content_empty_title)
+        content_empty_sub = QLabel("Bunlar bir loader gerektirmez, vanilla pack'lere de eklenebilir.")
+        content_empty_sub.setProperty("role", "muted")
+        content_empty_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        content_empty_layout.addWidget(content_empty_sub)
+        content_empty_cta = QPushButton("+ Shader / Dünya / Datapack / Görüntü Paketi")
+        content_empty_cta.setObjectName("primary")
+        content_empty_cta.clicked.connect(self.add_mod_clicked.emit)
+        content_empty_layout.addWidget(content_empty_cta, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.content_empty_state.hide()
+        content_layout.addWidget(self.content_empty_state, 1)
+
+        content_button_row = QHBoxLayout()
+        add_content_button = QPushButton("+ Shader / Dünya / Datapack / Görüntü Paketi")
+        add_content_button.setObjectName("primary")
+        add_content_button.clicked.connect(self.add_mod_clicked.emit)
+        content_button_row.addWidget(add_content_button)
+
+        remove_content_button = QPushButton("Seçiliyi Kaldır")
+        remove_content_button.setObjectName("danger")
+        remove_content_button.clicked.connect(self._on_remove_content_clicked)
+        content_button_row.addWidget(remove_content_button)
+        content_button_row.addStretch()
+        self.content_button_row = QWidget()
+        self.content_button_row.setLayout(content_button_row)
+        content_layout.addWidget(self.content_button_row)
 
     def _visible_mods(self, pack: Pack) -> list[ModEntry]:
         mods = list(pack.mods)
@@ -603,7 +677,11 @@ class PackDetailPanel(QWidget):
             self.sort_hint.hide()
             self.show_file_names_checkbox.hide()
             self.vanilla_notice.hide()
-            self.vanilla_content_bar.hide()
+            self.content_table.setRowCount(0)
+            self.content_table.hide()
+            self.content_empty_state.hide()
+            self.content_button_row.hide()
+            self.tabs.setTabText(1, "Diğer İçerikler")
             return
 
         is_vanilla = pack.loader.value == "vanilla"
@@ -620,6 +698,8 @@ class PackDetailPanel(QWidget):
         )
         self.mod_count_badge.setVisible(not is_vanilla)
 
+        self._populate_content_table(pack)
+
         # Vanilla pack'lere mod eklenemez (loader yok) — mod tablosu ve
         # ekleme/düzenleme araç çubuğu bu durumda tamamen gizlenir. Pack'te
         # hiç mod yoksa da aynı kontroller gizlenir; onların yerini boş
@@ -630,7 +710,6 @@ class PackDetailPanel(QWidget):
         self.sort_hint.setVisible(show_table_controls)
         self.show_file_names_checkbox.setVisible(show_table_controls)
         self.vanilla_notice.setVisible(is_vanilla)
-        self.vanilla_content_bar.setVisible(is_vanilla)
         if is_vanilla:
             self.table.hide()
             self.empty_state.hide()
@@ -678,6 +757,51 @@ class PackDetailPanel(QWidget):
 
     def _on_show_file_names_toggled(self, _checked: bool) -> None:
         self.show_pack(self._current_pack)
+
+    def _populate_content_table(self, pack: Pack) -> None:
+        """Shader/resourcepack/datapack (online aranıp eklenen, bkz.
+        ContentDownload) ve dünya(lar) (diskten yüklenen, bkz. ContentEntry)
+        — pack loader'ından bağımsız oldukları için vanilla pack'lerde de
+        (mod tablosu tamamen gizliyken) gösterilmeleri gerekir, bu yüzden
+        show_pack'in vanilla/boş-mod erken return'lerinden ÖNCE çağrılır."""
+        rows: list[tuple[ContentKind, str, str, str | None]] = []
+        for kind in (ContentKind.SHADERPACK, ContentKind.RESOURCEPACK, ContentKind.DATAPACK):
+            for entry in pack.content_downloads_of(kind):
+                rows.append((kind, entry.project_id, entry.name or entry.file_name, entry.source.value))
+        for entry in pack.content_of(ContentKind.WORLD):
+            rows.append((ContentKind.WORLD, entry.name, entry.name, None))
+
+        self.tabs.setTabText(1, f"Diğer İçerikler ({len(rows)})" if rows else "Diğer İçerikler")
+
+        has_rows = bool(rows)
+        self.content_table.setVisible(has_rows)
+        self.content_empty_state.setVisible(not has_rows)
+        self.content_button_row.setVisible(has_rows)
+
+        self.content_table.setRowCount(len(rows))
+        for row, (kind, identifier, name, source_value) in enumerate(rows):
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.ItemDataRole.UserRole, (kind, identifier))
+            self.content_table.setItem(row, 0, name_item)
+            self.content_table.setItem(row, 1, QTableWidgetItem(_CONTENT_KIND_LABELS[kind]))
+            if source_value is not None:
+                self.content_table.setCellWidget(row, 2, _source_indicator_widget(source_value))
+            else:
+                self.content_table.setItem(row, 2, QTableWidgetItem("Yerel (diskten)"))
+        self.content_table.resizeRowsToContents()
+
+    def _on_remove_content_clicked(self) -> None:
+        row = self.content_table.currentRow()
+        if row < 0:
+            return
+        item = self.content_table.item(row, 0)
+        if item is None:
+            return
+        kind, identifier = item.data(Qt.ItemDataRole.UserRole)
+        if kind == ContentKind.WORLD:
+            self.remove_world_requested.emit(identifier)
+        else:
+            self.remove_content_download_requested.emit(kind, identifier)
 
     def _on_remove_clicked(self) -> None:
         row = self.table.currentRow()
@@ -838,6 +962,7 @@ class SearchPanel(QWidget):
         layout.addLayout(row)
 
         self.results_list = QListWidget()
+        self.results_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.results_list.setSpacing(2)
         self.results_list.itemDoubleClicked.connect(self._on_add_clicked)
         # Sonsuz kaydırma: listenin sonuna yaklaşınca bir sonraki sayfayı iste

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QDialog,
     QFileDialog,
     QFrame,
@@ -56,6 +57,7 @@ class ModSearchDialog(QDialog):
         self.resize(900, 680)
 
         self.content_menu = QListWidget()
+        self.content_menu.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.pages = QStackedWidget()
 
         self.search_panel: SearchPanel | None = None
@@ -71,6 +73,7 @@ class ModSearchDialog(QDialog):
             self.pages.addWidget(self._make_content_page(kind, label, placeholder))
 
         self._world_list = QListWidget()
+        self._world_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.content_menu.addItem(QListWidgetItem("Dünya"))
         self.pages.addWidget(self._make_world_page())
 
@@ -103,6 +106,7 @@ class ModSearchDialog(QDialog):
 
         layout.addWidget(QLabel(f"Eklenmiş {label.lower()}ler:"))
         installed_list = QListWidget()
+        installed_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         installed_list.setMaximumHeight(110)
         self._installed_content_lists[kind] = installed_list
         layout.addWidget(installed_list)

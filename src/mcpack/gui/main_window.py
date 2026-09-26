@@ -149,6 +149,8 @@ class MainWindow(QMainWindow):
         self.pack_detail.export_requested.connect(self.do_export)
         self.pack_detail.server_pack_requested.connect(self.do_server_pack)
         self.pack_detail.run_sklauncher_requested.connect(self.do_run_sklauncher)
+        self.pack_detail.remove_content_download_requested.connect(self.remove_content_download)
+        self.pack_detail.remove_world_requested.connect(self.remove_world)
 
     # -- durum çubuğu ---------------------------------------------------------
 
@@ -232,6 +234,7 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             self._on_error(str(exc))
             return
+        self.pack_detail.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status(f"{entry.name} eklendi.")
@@ -240,6 +243,7 @@ class MainWindow(QMainWindow):
         if self.current_pack is None:
             return
         self.manager.remove_content(self.current_pack, ContentKind.WORLD, name)
+        self.pack_detail.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status(f"{name} kaldırıldı.")
@@ -248,6 +252,7 @@ class MainWindow(QMainWindow):
         if self.current_pack is None:
             return
         self.manager.remove_content_download(self.current_pack, kind, project_id)
+        self.pack_detail.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status("Kaldırıldı.")

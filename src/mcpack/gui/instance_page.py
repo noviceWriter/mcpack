@@ -388,6 +388,14 @@ class WorldSection(QWidget):
             "+ Dünya Klasörü Seç",
         )
         empty_cta.clicked.connect(self.add_local_requested.emit)
+        # _empty_state tek bir CTA için tasarlandı ama dünyada iki farklı
+        # ekleme yolu var (yerel/online) — ikinci buton olmadan pack'te hiç
+        # dünya yokken kullanıcı "CurseForge'ta Ara"yı hiç göremiyordu (alt
+        # buton satırı da has_entries=False iken gizli — bkz. show_pack),
+        # sadece bir dünya ekledikten SONRA ortaya çıkıyordu.
+        empty_online_cta = QPushButton("+ CurseForge'ta Dünya Ara")
+        empty_online_cta.clicked.connect(self.add_online_requested.emit)
+        self.empty_state.layout().addWidget(empty_online_cta, alignment=Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(self.empty_state, 1)
 
         button_row = QHBoxLayout()

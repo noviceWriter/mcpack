@@ -478,7 +478,18 @@ class MainWindow(QMainWindow):
 
     def _on_content_search_done(self, kind: ContentKind, results: list[SearchResult], *, append: bool) -> None:
         if self._mod_search_dialog is not None:
-            panel = self._mod_search_dialog.content_search_panels.get(kind)
+            # Dünya'nın arama paneli content_search_panels'ta DEĞİL (o sözlük
+            # sadece shader/resourcepack/datapack için) — ayrı bir attribute
+            # (world_search_panel). Bu ayrımı unutup her zaman
+            # content_search_panels'a bakmak dünya sonuçlarının sessizce
+            # hiçbir yere yazılmamasına yol açıyordu (kullanıcı geri bildirimi:
+            # "dünya oto listelenmiyor, arama da çalışmıyor" — istek gerçekten
+            # ağa gidip başarıyla dönüyordu, sonuç sadece hiç gösterilmiyordu).
+            panel = (
+                self._mod_search_dialog.world_search_panel
+                if kind == ContentKind.WORLD
+                else self._mod_search_dialog.content_search_panels.get(kind)
+            )
             if panel is not None:
                 panel.set_results(results, append=append)
         self.set_status("Hazır")

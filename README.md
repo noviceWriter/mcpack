@@ -1,4 +1,17 @@
-# mcpack — Minecraft Mod Paket Yöneticisi
+# MC Pack Manager (mcpack)
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+
+> **Bu bir Minecraft başlatıcısı (launcher) DEĞİLDİR — bir mod paketi
+> (modpack) yöneticisidir.** Minecraft'ı çalıştırmaz, hesap girişi yapmaz.
+> Modları arayıp bir pack'te toplar, `.mrpack` / CurseForge `.zip` / Prism
+> `.zip` / Sunucu Paketi olarak dışa aktarır — oyunu asıl çalıştıran her
+> zaman CurseForge App, Prism Launcher, Modrinth App gibi gerçek bir
+> başlatıcı (ya da ayarladığınız SKLauncher) olur. Ayrıntılı kullanım için
+> **[KULLANIM-KILAVUZU.md](KULLANIM-KILAVUZU.md)**'ya bakın.
+>
+> Bağımsız, topluluk kaynaklı bir araçtır; Mojang/Microsoft, Overwolf
+> (CurseForge) ya da Modrinth ile bir bağlantısı/onayı yoktur.
 
 Modrinth/CurseForge'tan mod arama, pack oluşturma, `.mrpack` / CurseForge /
 Prism formatlarında export, server pack üretimi ve SKLauncher entegrasyonu.
@@ -61,9 +74,24 @@ src/mcpack/
   sources/              # Modrinth + CurseForge API client'ları + birleşik arama
   packs/                 # Pack yönetimi (oluştur/kaydet/mod ekle-çıkar/env düzelt)
   export/                 # mrpack / CurseForge / Prism / server pack export
-  gui/                     # PySide6 arayüzü (3 panelli düzen + ayarlar penceresi)
+  gui/                     # PySide6 arayüzü (Kütüphane sayfası + Instance sayfası)
   cli.py               # Basit komut satırı arayüzü
 data/
   client_only_mods.json  # Server pack filtrelemesi için bilinen liste
 tests/                    # pytest + respx ile API mock'ları
 ```
+
+## Katkıda Bulunma
+
+Katkı, hata bildirimi ve özellik önerileri için bkz. [CONTRIBUTING.md](CONTRIBUTING.md).
+Topluluk davranış kuralları için [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md),
+güvenlik açığı bildirimi için [SECURITY.md](SECURITY.md).
+
+## Lisans
+
+Bu proje **[AGPL-3.0](LICENSE)** ile lisanslanmıştır: kaynağı özgürce
+kullanabilir, değiştirebilir ve dağıtabilirsiniz — ama değiştirilmiş bir
+sürümü dağıtırsanız ya da bir ağ servisi olarak sunarsanız, o değiştirilmiş
+kaynağı da aynı lisansla paylaşmanız gerekir. Ticari kullanım serbesttir,
+kapalı kaynak olarak yeniden dağıtım değildir. Sade Türkçe açıklama için
+[LISANS-SSS.md](LISANS-SSS.md)'ye bakın (bu bir hukuki tavsiye değildir).

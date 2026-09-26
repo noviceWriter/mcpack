@@ -1,0 +1,132 @@
+name: Release
+
+# "v*" etiketiyle push edildiğinde (ör. v1.0.0) Windows için kurulum
+# gerektirmeyen (portable) tek dosyalık .exe ve Linux için AppImage
+# derleyip GitHub Release'e ekler. workflow_dispatch ile elle de
+# tetiklenebilir (ör. release oluşturmadan derlemeyi test etmek için).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bağımlılıkları kur
+        run: |
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Portable .exe derle
+        # NOT: --icon burada yok — PyInstaller Windows'ta ikon için .ico
+        # ister, elimizdeki .png doğrudan işe yaramaz; ikon eklemek ileride
+        # ayrı bir iyileştirme (bkz. packaging/mcpack.png'den .ico üretmek).
+        run: >
+          pyinstaller --noconfirm --onefile --windowed
+          --name mcpack
+          --paths src
+          --exclude-module PySide6.QtQml
+          --exclude-module PySide6.QtQuick
+          --exclude-module PySide6.QtQuick3D
+          --exclude-module PySide6.QtWebEngineCore
+          --exclude-module PySide6.QtWebEngineWidgets
+          --exclude-module PySide6.QtMultimedia
+          --exclude-module PySide6.QtBluetooth
+          --exclude-module PySide6.QtPdf
+          --exclude-module PySide6.QtCharts
+          --exclude-module PySide6.QtDataVisualization
+          --exclude-module PySide6.Qt3DCore
+          src/mcpack/main.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcpack-windows-exe
+          path: dist/mcpack.exe
+
+  build-linux-appimage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bağımlılıkları kur
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libopengl0 libxkbcommon0 libxcb-cursor0 fuse libfuse2
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Portable binary derle
+        run: >
+          pyinstaller --noconfirm --onefile --windowed
+          --name mcpack
+          --paths src
+          --exclude-module PySide6.QtQml
+          --exclude-module PySide6.QtQuick
+          --exclude-module PySide6.QtQuick3D
+          --exclude-module PySide6.QtWebEngineCore
+          --exclude-module PySide6.QtWebEngineWidgets
+          --exclude-module PySide6.QtMultimedia
+          --exclude-module PySide6.QtBluetooth
+          --exclude-module PySide6.QtPdf
+          --exclude-module PySide6.QtCharts
+          --exclude-module PySide6.QtDataVisualization
+          --exclude-module PySide6.Qt3DCore
+          src/mcpack/main.py
+
+      - name: AppDir oluştur
+        run: |
+          mkdir -p mcpack.AppDir/usr/bin
+          cp dist/mcpack mcpack.AppDir/usr/bin/mcpack
+          cp packaging/mcpack.png mcpack.AppDir/mcpack.png
+          cp packaging/mcpack.desktop mcpack.AppDir/mcpack.desktop
+          cat > mcpack.AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          exec "${HERE}/usr/bin/mcpack" "$@"
+          EOF
+          chmod +x mcpack.AppDir/AppRun
+
+      - name: appimagetool indir
+        run: |
+          curl -sL -o appimagetool.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool.AppImage
+
+      - name: AppImage derle
+        run: ./appimagetool.AppImage --appimage-extract-and-run mcpack.AppDir MC_Pack_Manager-x86_64.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcpack-linux-appimage
+          path: MC_Pack_Manager-x86_64.AppImage
+
+  release:
+    needs: [build-windows, build-linux-appimage]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Release oluştur
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/mcpack-windows-exe/mcpack.exe
+            artifacts/mcpack-linux-appimage/MC_Pack_Manager-x86_64.AppImage
+          generate_release_notes: true

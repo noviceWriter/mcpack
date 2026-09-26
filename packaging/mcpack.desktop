@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MC Pack Manager
+Comment=Minecraft mod paketi yöneticisi (launcher değildir)
+Exec=mcpack
+Icon=mcpack
+Categories=Game;Utility;
+Terminal=false

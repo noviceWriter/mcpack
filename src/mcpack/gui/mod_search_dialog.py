@@ -48,9 +48,15 @@ class ModSearchDialog(QDialog):
     world_removed = Signal(str)  # ad (klasör adı)
     content_removed = Signal(object, str)  # ContentKind, project_id
 
-    def __init__(self, pack: Pack, parent=None) -> None:
+    def __init__(self, pack: Pack, parent=None, *, initial_kind: ContentKind | None = None) -> None:
+        """initial_kind: InstancePage'in belirli bir bölümündeki "+ Ekle"
+        butonuna tıklandığında pencere doğrudan o türün sekmesinde açılsın
+        diye (ör. Shader bölümünden açılırsa Modlar'da değil Shader
+        sekmesinde başlar) — verilmezse (ana araç çubuğundan açılış) ilk
+        sekmede (Modlar, ya da vanilla'da ilk içerik türünde) başlar."""
         super().__init__(parent)
         self.pack = pack
+        self._initial_kind = initial_kind
         self.is_vanilla = pack.loader == Loader.VANILLA
         title_prefix = "İçerik Ekle" if self.is_vanilla else "Mod Ekle"
         self.setWindowTitle(f"{title_prefix} — {pack.name}")
@@ -68,17 +74,21 @@ class ModSearchDialog(QDialog):
 
         self.content_search_panels: dict[ContentKind, SearchPanel] = {}
         self._installed_content_lists: dict[ContentKind, QListWidget] = {}
+        self._kind_rows: dict[ContentKind, int] = {}
         for kind, label, placeholder in _SEARCHABLE_CONTENT:
+            self._kind_rows[kind] = self.content_menu.count()
             self.content_menu.addItem(QListWidgetItem(label))
             self.pages.addWidget(self._make_content_page(kind, label, placeholder))
 
         self._world_list = QListWidget()
         self._world_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._kind_rows[ContentKind.WORLD] = self.content_menu.count()
         self.content_menu.addItem(QListWidgetItem("Dünya"))
         self.pages.addWidget(self._make_world_page())
 
         self.content_menu.currentRowChanged.connect(self.pages.setCurrentIndex)
-        self.content_menu.setCurrentRow(0)
+        initial_row = self._kind_rows.get(initial_kind, 0) if initial_kind is not None else 0
+        self.content_menu.setCurrentRow(initial_row)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)

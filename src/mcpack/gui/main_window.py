@@ -1,9 +1,13 @@
 """Ana pencere.
 
-Prism Launcher / CurseForge App'ten ilham alınan düzen: sol tarafta ince
-bir pack listesi, sağda geniş bir "ana sahne" (pack detayı + eylem araç
-çubuğu + mod tablosu). Mod ekleme ayrı bir pencerede (gui/mod_search_dialog.py)
-— kalıcı bir yan panel olarak her zaman görünmüyor. İndirme ilerlemesi ve
+Prism Launcher / CurseForge App'ten ilham alınan iki sayfalı düzen: bir
+"Kütüphane" sayfası (bkz. library_page.py — tüm pack'lerin listesi) ve bir
+pack'e tıklandığında açılan "Instance" sayfası (bkz. instance_page.py — o
+pack'in modları/shader'ları/dünyaları + export/server/launcher eylemleri).
+Önceden her ikisi de aynı anda, sol/sağ bölünmüş tek bir ekranda dururdu;
+kullanıcı isteğiyle (MultiMC/Prism/CurseForge App'teki gibi) ayrı sayfalara
+ayrıldı. Mod ekleme hâlâ ayrı bir pencerede (gui/mod_search_dialog.py) —
+kalıcı bir yan panel olarak her zaman görünmüyor. İndirme ilerlemesi ve
 durum mesajları alt durum çubuğunda (QStatusBar), ayrı bir panel değil.
 """
 
@@ -12,7 +16,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -24,7 +28,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
-    QSplitter,
+    QStackedWidget,
     QToolBar,
     QWidget,
 )
@@ -32,12 +36,14 @@ from PySide6.QtWidgets import (
 from mcpack.config import Settings
 from mcpack.downloader import make_client
 from mcpack.export import CurseForgeExporter, MrpackExporter, PrismExporter, ServerPackExporter
+from mcpack.gui.instance_page import InstancePage
+from mcpack.gui.library_page import LibraryPage
 from mcpack.gui.mod_search_dialog import ModSearchDialog
 from mcpack.gui.new_pack_dialog import NewPackDialog
 from mcpack.gui.recommended_mods_dialog import RecommendedModsDialog
 from mcpack.gui.settings_dialog import SettingsDialog
 from mcpack.gui.theme import set_active_theme, stylesheet_for
-from mcpack.gui.widgets import PackDetailPanel, PackListPanel, run_async
+from mcpack.gui.widgets import run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
 from mcpack.models import ContentKind, EnvRequirement, ModSourceType, Pack
 from mcpack.packs import PackManager
@@ -64,17 +70,13 @@ class MainWindow(QMainWindow):
         self._cancel_event: threading.Event | None = None
         self._mod_search_dialog: ModSearchDialog | None = None
 
-        self.pack_list = PackListPanel()
-        self.pack_list.setMaximumWidth(320)
-        self.pack_detail = PackDetailPanel()
+        self.library_page = LibraryPage()
+        self.instance_page = InstancePage()
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self.pack_list)
-        splitter.addWidget(self.pack_detail)
-        splitter.setSizes([300, 1020])
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        self.setCentralWidget(splitter)
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self.library_page)
+        self.pages.addWidget(self.instance_page)
+        self.setCentralWidget(self.pages)
 
         self._build_toolbar()
         self._build_status_bar()
@@ -90,13 +92,13 @@ class MainWindow(QMainWindow):
             app.setStyleSheet(stylesheet_for(self.settings.theme))
         # Zaten çizilmiş rozet/ikon renkleri (QSS'in kapsamadığı, Python
         # tarafında elle stillenen widget'lar) yeniden render edilmeden
-        # güncellenmez — pack_detail henüz kurulmadıysa (ilk açılış) atla.
-        pack_detail = getattr(self, "pack_detail", None)
-        if pack_detail is not None:
-            pack_detail.show_pack(self.current_pack)
-        pack_list = getattr(self, "pack_list", None)
-        if pack_list is not None:
-            pack_list.set_packs(self.manager.list_packs())
+        # güncellenmez — sayfalar henüz kurulmadıysa (ilk açılış) atla.
+        instance_page = getattr(self, "instance_page", None)
+        if instance_page is not None:
+            instance_page.show_pack(self.current_pack)
+        library_page = getattr(self, "library_page", None)
+        if library_page is not None:
+            library_page.set_packs(self.manager.list_packs())
 
     def _build_toolbar(self) -> None:
         """Ayarlar eskiden sadece menü çubuğunda tek satırlık bir menüydü —
@@ -140,17 +142,28 @@ class MainWindow(QMainWindow):
         bar.addPermanentWidget(self.cancel_button)
 
     def _wire_signals(self) -> None:
-        self.pack_list.new_pack_requested.connect(self.create_pack_dialog)
-        self.pack_list.delete_pack_requested.connect(self.delete_pack)
-        self.pack_list.pack_selected.connect(self.select_pack)
-        self.pack_detail.remove_mod_requested.connect(self.remove_mod)
-        self.pack_detail.edit_env_requested.connect(self.edit_mod_env)
-        self.pack_detail.add_mod_clicked.connect(self.open_mod_search_dialog)
-        self.pack_detail.export_requested.connect(self.do_export)
-        self.pack_detail.server_pack_requested.connect(self.do_server_pack)
-        self.pack_detail.run_sklauncher_requested.connect(self.do_run_sklauncher)
-        self.pack_detail.remove_content_download_requested.connect(self.remove_content_download)
-        self.pack_detail.remove_world_requested.connect(self.remove_world)
+        self.library_page.new_pack_requested.connect(self.create_pack_dialog)
+        self.library_page.delete_pack_requested.connect(self.delete_pack)
+        self.library_page.pack_opened.connect(self.open_pack)
+
+        self.instance_page.back_requested.connect(self.show_library)
+        self.instance_page.export_requested.connect(self.do_export)
+        self.instance_page.server_pack_requested.connect(self.do_server_pack)
+        self.instance_page.run_sklauncher_requested.connect(self.do_run_sklauncher)
+
+        mods = self.instance_page.mods_section
+        mods.remove_mod_requested.connect(self.remove_mod)
+        mods.edit_env_requested.connect(self.edit_mod_env)
+        mods.add_mod_clicked.connect(lambda: self.open_mod_search_dialog(None))
+
+        for kind, section in self.instance_page.content_sections.items():
+            section.add_requested.connect(lambda k=kind: self.open_mod_search_dialog(k))
+            section.remove_requested.connect(lambda pid, k=kind: self.remove_content_download(k, pid))
+
+        world = self.instance_page.world_section
+        world.add_local_requested.connect(self.browse_and_add_world)
+        world.add_online_requested.connect(lambda: self.open_mod_search_dialog(ContentKind.WORLD))
+        world.remove_requested.connect(self.remove_world)
 
     # -- durum çubuğu ---------------------------------------------------------
 
@@ -170,15 +183,30 @@ class MainWindow(QMainWindow):
             self.settings.save()
             self._apply_theme()  # tema değişmiş olabilir, yeniden başlatmadan uygula
 
-    # -- pack listesi / detay ------------------------------------------------
+    # -- kütüphane / instance sayfaları arası gezinme -------------------------
 
     def reload_packs(self) -> None:
-        self.pack_list.set_packs(self.manager.list_packs())
+        self.library_page.set_packs(self.manager.list_packs())
 
     def open_data_folder(self) -> None:
         data_dir = self.settings.resolved_packs_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(data_dir)))
+
+    def open_pack(self, pack_id: str) -> None:
+        self.current_pack = self.manager.load(pack_id)
+        self.instance_page.show_pack(self.current_pack)
+        self.pages.setCurrentWidget(self.instance_page)
+
+    def show_library(self) -> None:
+        # Açık mod arama penceresi (varsa) artık görünmeyen bir instance'a
+        # ait olur — kapat, aksi halde arka planda asılı kalır.
+        if self._mod_search_dialog is not None:
+            self._mod_search_dialog.close()
+            self._mod_search_dialog = None
+        self.current_pack = None
+        self.reload_packs()  # ad/mod sayısı değişmiş olabilir
+        self.pages.setCurrentWidget(self.library_page)
 
     def delete_pack(self, pack_id: str) -> None:
         pack = self.manager.load(pack_id)
@@ -193,9 +221,9 @@ class MainWindow(QMainWindow):
             return
         self.manager.delete(pack_id)
         if self.current_pack is not None and self.current_pack.id == pack_id:
-            self.current_pack = None
-            self.pack_detail.show_pack(None)
-        self.reload_packs()
+            self.show_library()
+        else:
+            self.reload_packs()
 
     def create_pack_dialog(self) -> None:
         dialog = NewPackDialog(self)
@@ -212,19 +240,17 @@ class MainWindow(QMainWindow):
         )
         self.reload_packs()
 
-    def select_pack(self, pack_id: str) -> None:
-        self.current_pack = self.manager.load(pack_id)
-        self.pack_detail.show_pack(self.current_pack)
-        # Açık mod arama penceresi başka bir pack'e ait olabilir — kapat.
-        if self._mod_search_dialog is not None:
-            self._mod_search_dialog.close()
-            self._mod_search_dialog = None
-
     def remove_mod(self, project_id: str) -> None:
         if not self.current_pack:
             return
         self.manager.remove_mod(self.current_pack, project_id)
-        self.pack_detail.show_pack(self.current_pack)
+        self.instance_page.show_pack(self.current_pack)
+
+    def browse_and_add_world(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Dünya Klasörü Seç")
+        if not path:
+            return
+        self.add_world(path)
 
     def add_world(self, path: str) -> None:
         if self.current_pack is None:
@@ -234,7 +260,7 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             self._on_error(str(exc))
             return
-        self.pack_detail.show_pack(self.current_pack)
+        self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status(f"{entry.name} eklendi.")
@@ -243,7 +269,7 @@ class MainWindow(QMainWindow):
         if self.current_pack is None:
             return
         self.manager.remove_content(self.current_pack, ContentKind.WORLD, name)
-        self.pack_detail.show_pack(self.current_pack)
+        self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status(f"{name} kaldırıldı.")
@@ -252,7 +278,7 @@ class MainWindow(QMainWindow):
         if self.current_pack is None:
             return
         self.manager.remove_content_download(self.current_pack, kind, project_id)
-        self.pack_detail.show_pack(self.current_pack)
+        self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status("Kaldırıldı.")
@@ -284,7 +310,7 @@ class MainWindow(QMainWindow):
         self.manager.set_mod_env(
             pack, project_id, client=EnvRequirement(client), server=EnvRequirement(server)
         )
-        self.pack_detail.show_pack(pack)
+        self.instance_page.show_pack(pack)
 
     # -- mod arama / ekleme --------------------------------------------------
 
@@ -293,12 +319,15 @@ class MainWindow(QMainWindow):
             return CurseForgeClient(self.settings.curseforge_api_key)
         return ModrinthClient()
 
-    def open_mod_search_dialog(self) -> None:
+    def open_mod_search_dialog(self, initial_kind: ContentKind | None) -> None:
         """Mod arama + shader/dünya/datapack/görüntü paketi ekleme penceresi.
 
-        Vanilla pack'lerde mod arama sekmesi olmaz (loader gerektirir) ama
-        shader/dünya/datapack/görüntü paketi bir loader gerektirmediği için
-        vanilla pack'ler de bu pencereyi açabilir (bkz. ModSearchDialog.is_vanilla)."""
+        initial_kind: instance sayfasındaki hangi bölümün "+ Ekle" butonuna
+        basıldıysa pencere doğrudan o sekmede açılır (None -> Modlar, ya da
+        vanilla'da ilk içerik türü). Vanilla pack'lerde mod arama sekmesi
+        olmaz (loader gerektirir) ama shader/dünya/datapack/görüntü paketi
+        bir loader gerektirmediği için vanilla pack'ler de bu pencereyi
+        açabilir (bkz. ModSearchDialog.is_vanilla)."""
         if not self.current_pack:
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
             return
@@ -308,7 +337,7 @@ class MainWindow(QMainWindow):
             self._mod_search_dialog.activateWindow()
             return
 
-        dialog = ModSearchDialog(self.current_pack, self)
+        dialog = ModSearchDialog(self.current_pack, self, initial_kind=initial_kind)
         dialog.world_added.connect(self.add_world)
         dialog.world_removed.connect(self.remove_world)
         dialog.content_removed.connect(self.remove_content_download)
@@ -500,7 +529,7 @@ class MainWindow(QMainWindow):
         run_async(task, on_success=self._on_mod_added, on_error=self._on_error)
 
     def _on_mod_added(self, suggestions: list[tuple[ModVersion, ModDetail]]) -> None:
-        self.pack_detail.show_pack(self.current_pack)
+        self.instance_page.show_pack(self.current_pack)
         self.set_status("Mod eklendi")
         self._refresh_added_markers()
 
@@ -510,7 +539,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() == RecommendedModsDialog.DialogCode.Accepted:
             for version, detail in dialog.selected():
                 self.manager.add_mod(self.current_pack, version, detail)
-            self.pack_detail.show_pack(self.current_pack)
+            self.instance_page.show_pack(self.current_pack)
             self._refresh_added_markers()
 
     def add_content_download_result(self, kind: ContentKind, result: SearchResult) -> None:
@@ -562,13 +591,13 @@ class MainWindow(QMainWindow):
         run_async(task, on_success=self._on_world_download_added, on_error=self._on_error)
 
     def _on_world_download_added(self) -> None:
-        self.pack_detail.show_pack(self.current_pack)
+        self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None and self.current_pack is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status("Dünya eklendi")
 
     def _on_content_download_added(self, kind: ContentKind) -> None:
-        self.pack_detail.show_pack(self.current_pack)
+        self.instance_page.show_pack(self.current_pack)
         self.set_status("Eklendi")
         self._refresh_added_markers()
 

@@ -327,26 +327,6 @@ def danger_color() -> str:
     return DARK_PALETTE["danger_text"]
 
 
-def pack_text_colors(selected: bool) -> tuple[str, str]:
-    palette = PALETTES[_active_theme]
-    if selected:
-        return palette["selected_text"], palette["selected_text"]
-    return palette["text"], palette["text_muted"]
-
-
-def pack_card_background(selected: bool) -> str:
-    palette = PALETTES[_active_theme]
-    return palette["selected_bg"] if selected else palette["panel_bg"]
-
-
-def pack_card_stripe(selected: bool) -> str:
-    """Seçili pack kartının sol kenarındaki ince şerit — QListWidget'ın kendi
-    ::item:selected border-left'i _PackCard'ın opak arka planının ALTINDA
-    kalıp görünmediği için kart burada kendi şeridini çiziyor (bkz.
-    düzeltme2.md: solid dolgu yerine ton+şerit)."""
-    return PALETTES[_active_theme]["selected_stripe"] if selected else "transparent"
-
-
 def apply_card_shadow(widget) -> None:
     """Panellere (QGroupBox'lar) referans tasarımdaki gibi hafif bir
     yükselti/gölge verir — QSS'in box-shadow'u olmadığı için

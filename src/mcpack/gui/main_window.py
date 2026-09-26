@@ -338,7 +338,6 @@ class MainWindow(QMainWindow):
             return
 
         dialog = ModSearchDialog(self.current_pack, self, initial_kind=initial_kind)
-        dialog.world_added.connect(self.add_world)
         dialog.world_removed.connect(self.remove_world)
         dialog.content_removed.connect(self.remove_content_download)
         dialog.finished.connect(self._on_mod_search_dialog_closed)

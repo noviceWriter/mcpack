@@ -11,8 +11,11 @@ eklemeyle BİREBİR AYNI akışla (Modrinth/CurseForge'ta arayıp ekleme) ekleni
 — kullanıcı isteği: "yine mod yükler gibi". Dünya farklı: Modrinth'te
 "dünya/harita" diye bir proje türü yok, sadece CurseForge'ta var (classId 17)
 — bu yüzden Dünya sekmesi SADECE CurseForge'ta arar (bkz. SearchPanel
-curseforge_only) ve altında ayrıca kendi bilgisayarından yükleme seçeneği de
-sunar (kullanıcının kendi haritası/kayıt dosyası olabilir)."""
+curseforge_only). Kendi bilgisayarından dünya klasörü seçme artık bu
+pencerede DEĞİL, doğrudan InstancePage'in "Dünyalar" bölümünde (bkz.
+instance_page.py:WorldSection) — burada tekrar bir "Dünya Klasörü Seç"
+butonu göstermek kullanıcıyı "CurseForge'ta ara" ile "diskten yükle"
+arasında hangi ekranda olduğu konusunda karıştırıyordu."""
 
 from __future__ import annotations
 
@@ -20,8 +23,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
-    QFileDialog,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -44,8 +45,7 @@ _SEARCHABLE_CONTENT: list[tuple[ContentKind, str, str]] = [
 
 
 class ModSearchDialog(QDialog):
-    world_added = Signal(str)  # seçilen dünya klasörünün yolu
-    world_removed = Signal(str)  # ad (klasör adı)
+    world_removed = Signal(str)  # ad (klasör adı) — bkz. _remove_selected_world
     content_removed = Signal(object, str)  # ContentKind, project_id
 
     def __init__(self, pack: Pack, parent=None, *, initial_kind: ContentKind | None = None) -> None:
@@ -136,6 +136,11 @@ class ModSearchDialog(QDialog):
         self.content_removed.emit(kind, project_id)
 
     def _make_world_page(self) -> QWidget:
+        """Sadece CurseForge'ta arama — diskten yükleme artık burada değil
+        (bkz. modül docstring'i). "Yüklü dünyalar" listesi burada hâlâ var
+        ki bu pencere açıkken az önce indirilen bir dünya anında görülüp
+        gerekirse kaldırılabilsin (diğer içerik sekmelerindeki "Eklenmiş
+        X'ler" deseniyle tutarlı)."""
         page = QWidget()
         layout = QVBoxLayout(page)
 
@@ -145,32 +150,11 @@ class ModSearchDialog(QDialog):
             add_button_text="Seçili dünyayı indir ve pack'e ekle",
             curseforge_only=True,
         )
-        layout.addWidget(self.world_search_panel)
-
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(divider)
-
-        local_title = QLabel("Kendi bilgisayarından yükle")
-        local_title.setProperty("role", "heading")
-        layout.addWidget(local_title)
-        hint = QLabel(
-            "Zaten diskinde bir dünyan varsa (saves/ altındaki) klasörünü doğrudan seçip yükle. "
-            "Birden fazla dünya yükleyebilirsin; sunucu paketi oluştururken hangisinin "
-            "ekleneceği ayrıca sorulur."
-        )
-        hint.setProperty("role", "muted")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-
-        browse_button = QPushButton("+ Dünya Klasörü Seç ve Yükle")
-        browse_button.setObjectName("primary")
-        browse_button.clicked.connect(self._browse_and_add_world)
-        layout.addWidget(browse_button)
+        layout.addWidget(self.world_search_panel, 1)
 
         layout.addWidget(QLabel("Yüklü dünyalar:"))
-        layout.addWidget(self._world_list, 1)
+        layout.addWidget(self._world_list)
+        self._world_list.setMaximumHeight(110)
         self._refresh_world_list()
 
         remove_button = QPushButton("Seçili dünyayı kaldır")
@@ -179,12 +163,6 @@ class ModSearchDialog(QDialog):
         layout.addWidget(remove_button)
 
         return page
-
-    def _browse_and_add_world(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Dünya Klasörü Seç")
-        if not path:
-            return
-        self.world_added.emit(path)
 
     def _remove_selected_world(self) -> None:
         item = self._world_list.currentItem()

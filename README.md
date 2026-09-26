@@ -83,8 +83,7 @@ tests/                    # pytest + respx ile API mock'ları
 
 ## Katkıda Bulunma
 
-Katkı, hata bildirimi ve özellik önerileri için bkz. [CONTRIBUTING.md](CONTRIBUTING.md).
-Topluluk davranış kuralları için [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md),
+Katkı, hata bildirimi ve özellik önerileri için bkz. [CONTRIBUTING.md](CONTRIBUTING.md),
 güvenlik açığı bildirimi için [SECURITY.md](SECURITY.md).
 
 ## Lisans

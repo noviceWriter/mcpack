@@ -18,6 +18,10 @@ from PySide6.QtWidgets import (
 )
 
 from mcpack.config import Settings
+from mcpack.gui.theme import danger_color, status_good_color
+from mcpack.gui.widgets import run_async
+from mcpack.sources.curseforge import CurseForgeClient
+from mcpack.sources.base import SourceAPIError
 
 
 def _section_label(text: str) -> QLabel:
@@ -36,9 +40,22 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
 
         form.addRow(_section_label("Mod Kaynakları"))
+        cf_key_row = QWidget()
+        cf_key_layout = QHBoxLayout(cf_key_row)
+        cf_key_layout.setContentsMargins(0, 0, 0, 0)
         self.cf_key_input = QLineEdit(settings.curseforge_api_key)
         self.cf_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow("CurseForge API Key:", self.cf_key_input)
+        self.cf_key_input.textChanged.connect(self._on_cf_key_changed)
+        cf_key_layout.addWidget(self.cf_key_input)
+        self.cf_test_button = QPushButton("Bağlantıyı Test Et")
+        self.cf_test_button.setEnabled(bool(settings.curseforge_api_key))
+        self.cf_test_button.clicked.connect(self._test_cf_connection)
+        cf_key_layout.addWidget(self.cf_test_button)
+        form.addRow("CurseForge API Key:", cf_key_row)
+
+        self.cf_status_label = QLabel("")
+        self.cf_status_label.setWordWrap(True)
+        form.addRow("", self.cf_status_label)
 
         self.prefer_modrinth_checkbox = QCheckBox("Aynı mod iki kaynakta da varsa Modrinth'i tercih et")
         self.prefer_modrinth_checkbox.setChecked(settings.prefer_modrinth)
@@ -82,6 +99,41 @@ class SettingsDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "Taşınabilir SKLauncher Seç")
         if path:
             self.sklauncher_input.setText(path)
+
+    def _on_cf_key_changed(self, text: str) -> None:
+        self.cf_test_button.setEnabled(bool(text.strip()))
+        self.cf_status_label.setText("")
+
+    def _test_cf_connection(self) -> None:
+        """CurseForge API'sine gerçekten bağlanılabiliyor mu — key doğru mu,
+        ağ/CDN engeli var mı — export sırasında sürpriz bir hatayla
+        karşılaşmadan önce kullanıcının kendi kontrol edebilmesi için."""
+        api_key = self.cf_key_input.text().strip()
+        if not api_key:
+            return
+
+        self.cf_test_button.setEnabled(False)
+        self.cf_status_label.setStyleSheet("")
+        self.cf_status_label.setText("Kontrol ediliyor...")
+
+        async def task() -> str:
+            client = CurseForgeClient(api_key)
+            try:
+                return await client.check_connection()
+            finally:
+                await client.aclose()
+
+        def on_success(game_name: str) -> None:
+            self.cf_test_button.setEnabled(True)
+            self.cf_status_label.setStyleSheet(f"color: {status_good_color()};")
+            self.cf_status_label.setText(f"✓ Bağlandı ({game_name})")
+
+        def on_error(message: str) -> None:
+            self.cf_test_button.setEnabled(True)
+            self.cf_status_label.setStyleSheet(f"color: {danger_color()};")
+            self.cf_status_label.setText(f"✗ Bağlanamadı: {message}")
+
+        run_async(task, on_success=on_success, on_error=on_error)
 
     def apply_to(self, settings: Settings) -> None:
         settings.theme = "dark"

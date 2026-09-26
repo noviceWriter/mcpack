@@ -57,7 +57,14 @@ class _AsyncWorker(QThread):
         try:
             result = asyncio.run(self._coro_factory())
         except Exception as exc:  # GUI'de göstermek için genel yakalama
-            self.signals.error.emit(f"{exc}\n{traceback.format_exc()}")
+            # Tam traceback konsola basılır (geliştirici/log için) — GUI'ye
+            # (QMessageBox popup'ı ya da bir durum etiketi) sadece kısa,
+            # okunabilir hata mesajı gider. Önceden ikisi birleştirilip
+            # kullanıcıya gösteriliyordu: geçici bir ağ hatasında bile
+            # (ör. Modrinth bağlantısı koptuğunda) ekrana 40+ satırlık ham
+            # Python traceback'i düşüyordu (kullanıcı geri bildirimi).
+            traceback.print_exc()
+            self.signals.error.emit(str(exc))
         else:
             self.signals.result.emit(result)
 

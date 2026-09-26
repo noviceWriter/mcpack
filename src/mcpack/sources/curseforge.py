@@ -74,6 +74,16 @@ class CurseForgeClient(ModSource):
         if self._owns_client:
             await self._client.aclose()
 
+    async def check_connection(self) -> str:
+        """Ayarlar penceresindeki "Bağlantıyı Test Et" butonu için — key
+        geçersizse/yetkisizse _get zaten 403'ü net bir SourceAPIError'a
+        çeviriyor (bkz. yukarısı), burada sadece başarılıysa oyunun adını
+        döndürüyoruz ki kullanıcı sadece "bağlandı" değil neye bağlandığını
+        da görsün."""
+        response = await self._get(f"/v1/games/{MINECRAFT_GAME_ID}")
+        data = response.json().get("data", {})
+        return data.get("name", "Minecraft")
+
     async def _get(self, path: str, params: dict | None = None) -> httpx.Response:
         try:
             response = await self._client.get(f"{BASE_URL}{path}", params=params)

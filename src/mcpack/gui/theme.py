@@ -38,8 +38,8 @@ DARK_PALETTE = {
     "alt_row_bg": "#26282c",
     "scrollbar_handle": "#3a3d41",
     "scrollbar_handle_hover": "#4a4d54",
-    "selected_bg": "#3d6bb3",
-    "selected_text": "#ffffff",
+    "selected_bg": "#28344a",  # yumuşak koyu lacivert ton (solid canlı mavi dolgu DEĞİL — düzeltme2.md)
+    "selected_text": "#cfe0ff",  # açık mavi-beyaz, okunaklı ama göz yormayan
     "selected_stripe": "#5b8def",
     "on_accent_text": "#ffffff",
     "disabled_text": "#6b6f76",
@@ -337,6 +337,14 @@ def pack_text_colors(selected: bool) -> tuple[str, str]:
 def pack_card_background(selected: bool) -> str:
     palette = PALETTES[_active_theme]
     return palette["selected_bg"] if selected else palette["panel_bg"]
+
+
+def pack_card_stripe(selected: bool) -> str:
+    """Seçili pack kartının sol kenarındaki ince şerit — QListWidget'ın kendi
+    ::item:selected border-left'i _PackCard'ın opak arka planının ALTINDA
+    kalıp görünmediği için kart burada kendi şeridini çiziyor (bkz.
+    düzeltme2.md: solid dolgu yerine ton+şerit)."""
+    return PALETTES[_active_theme]["selected_stripe"] if selected else "transparent"
 
 
 def apply_card_shadow(widget) -> None:

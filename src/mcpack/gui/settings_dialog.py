@@ -53,7 +53,7 @@ class SettingsDialog(QDialog):
         browse_button = QPushButton("Gözat...")
         browse_button.clicked.connect(self._browse_sklauncher)
         sklauncher_layout.addWidget(browse_button)
-        form.addRow("Portable Yol:", sklauncher_row)
+        form.addRow("Taşınabilir Yol:", sklauncher_row)
 
         form.addRow(_section_label("Dışa Aktarma"))
         self.exclude_logs_checkbox = QCheckBox("Dışa aktarımda logs/ klasörünü hariç tut")
@@ -79,7 +79,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def _browse_sklauncher(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Portable SKLauncher Seç")
+        path, _ = QFileDialog.getOpenFileName(self, "Taşınabilir SKLauncher Seç")
         if path:
             self.sklauncher_input.setText(path)
 

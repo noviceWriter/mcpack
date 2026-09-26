@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
         butonuna taşındı (Prism Launcher'daki gibi)."""
         toolbar = QToolBar("Ana")
         toolbar.setMovable(False)
+        toolbar.setContentsMargins(6, 4, 10, 4)
         self.addToolBar(toolbar)
 
         spacer = QWidget()
@@ -251,13 +252,13 @@ class MainWindow(QMainWindow):
 
         env_values = [e.value for e in EnvRequirement]
         client, ok = QInputDialog.getItem(
-            self, "Client Durumu", entry.file_name, env_values,
+            self, "İstemci Durumu", entry.file_name, env_values,
             current=env_values.index(entry.env.client.value), editable=False,
         )
         if not ok:
             return
         server, ok = QInputDialog.getItem(
-            self, "Server Durumu", entry.file_name, env_values,
+            self, "Sunucu Durumu", entry.file_name, env_values,
             current=env_values.index(entry.env.server.value), editable=False,
         )
         if not ok:

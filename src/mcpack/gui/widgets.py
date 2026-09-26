@@ -38,6 +38,7 @@ from mcpack.gui.theme import (
     icon_placeholder_bg,
     loader_color,
     pack_card_background,
+    pack_card_stripe,
     pack_text_colors,
     source_color,
     status_good_color,
@@ -295,6 +296,7 @@ class _PackCard(QWidget):
         name_color, subtitle_color = pack_text_colors(selected)
         self.setStyleSheet(
             f"background-color: {pack_card_background(selected)}; "
+            f"border-left: 3px solid {pack_card_stripe(selected)}; "
             "QLabel { background-color: transparent; }"
         )
         self._name_label.setStyleSheet(
@@ -524,14 +526,14 @@ class PackDetailPanel(QWidget):
         remove_button.clicked.connect(self._on_remove_clicked)
         button_row.addWidget(remove_button)
 
-        env_button = QPushButton("Client/Server Düzelt")
+        env_button = QPushButton("İstemci/Sunucu Düzelt")
         env_button.clicked.connect(self._on_edit_env_clicked)
         button_row.addWidget(env_button)
         button_row.addStretch()
         outer.addWidget(self.mod_actions_bar)
 
         self.vanilla_notice = QLabel(
-            "Vanilla pack'lerde mod eklenemez — mod eklemek için bir loader (Fabric/Quilt/Forge/NeoForge) seçin.\n"
+            "⚠ Vanilla pack'lerde mod eklenemez — mod eklemek için bir loader (Fabric/Quilt/Forge/NeoForge) seçin.\n"
             "Shader, dünya, datapack ve görüntü paketi bir loader gerektirmez, aşağıdan eklenebilir."
         )
         self.vanilla_notice.setObjectName("warningBox")

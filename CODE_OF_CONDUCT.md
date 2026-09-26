@@ -63,7 +63,7 @@ etmek yer alır.
 Taciz edici, rahatsız edici veya başka türlü kabul edilemez davranış
 örnekleri, uygulamadan sorumlu topluluk liderlerine şu yollardan
 bildirilebilir: **GitHub Issues
-(https://github.com/noviceWriter/mc-starter/issues) veya proje sahibiyle
+(https://github.com/noviceWriter/mcpack/issues) veya proje sahibiyle
 GitHub üzerinden doğrudan iletişim**. Tüm şikayetler derhal ve adil bir
 şekilde incelenip araştırılacaktır.
 

@@ -227,7 +227,11 @@ class MainWindow(QMainWindow):
     def add_world(self, path: str) -> None:
         if self.current_pack is None:
             return
-        entry = self.manager.add_content(self.current_pack, ContentKind.WORLD, Path(path))
+        try:
+            entry = self.manager.add_content(self.current_pack, ContentKind.WORLD, Path(path))
+        except ValueError as exc:
+            self._on_error(str(exc))
+            return
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status(f"{entry.name} eklendi.")
@@ -239,6 +243,14 @@ class MainWindow(QMainWindow):
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
         self.set_status(f"{name} kaldırıldı.")
+
+    def remove_content_download(self, kind: ContentKind, project_id: str) -> None:
+        if self.current_pack is None:
+            return
+        self.manager.remove_content_download(self.current_pack, kind, project_id)
+        if self._mod_search_dialog is not None:
+            self._mod_search_dialog.refresh_content(self.current_pack)
+        self.set_status("Kaldırıldı.")
 
     def edit_mod_env(self, project_id: str) -> None:
         """CurseForge gibi kaynaklar client/server bilgisini güvenilir vermeyebilir;
@@ -294,6 +306,7 @@ class MainWindow(QMainWindow):
         dialog = ModSearchDialog(self.current_pack, self)
         dialog.world_added.connect(self.add_world)
         dialog.world_removed.connect(self.remove_world)
+        dialog.content_removed.connect(self.remove_content_download)
         dialog.finished.connect(self._on_mod_search_dialog_closed)
         self._mod_search_dialog = dialog
 
@@ -556,17 +569,15 @@ class MainWindow(QMainWindow):
 
     def _refresh_added_markers(self) -> None:
         """Mod Ekle penceresi açıksa, az önce eklenen mod/shader/datapack/
-        görüntü paketi oradaki listede de anında "Eklendi" olarak işaretlensin."""
+        görüntü paketi oradaki listede de anında "Eklendi" olarak işaretlensin
+        ve "Eklenmiş X'ler" listesine düşsün (bkz. ModSearchDialog.refresh_content)."""
         if self._mod_search_dialog is None or self.current_pack is None:
             return
         if self._mod_search_dialog.search_panel is not None:
             self._mod_search_dialog.search_panel.set_added_project_ids(
                 {m.project_id for m in self.current_pack.mods}
             )
-        for kind, panel in self._mod_search_dialog.content_search_panels.items():
-            panel.set_added_project_ids(
-                {c.project_id for c in self.current_pack.content_downloads_of(kind)}
-            )
+        self._mod_search_dialog.refresh_content(self.current_pack)
 
     # -- export / server pack / sklauncher -----------------------------------
 

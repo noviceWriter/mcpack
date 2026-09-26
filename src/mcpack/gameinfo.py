@@ -76,10 +76,19 @@ async def get_forge_versions(client: httpx.AsyncClient, minecraft_version: str) 
             versions.add(text[len(prefix):])
 
     def sort_key(v: str) -> tuple[int, ...]:
-        try:
-            return tuple(int(p) for p in v.split("."))
-        except ValueError:
-            return (0,)
+        # Eski Forge build'leri maven versiyonunda MC versiyonunu ikinci kez
+        # sona ekliyor (ör. "10.13.4.1614-1.7.10") — asıl build numarası "-"
+        # işaretinden önceki kısım, sonrası sıralama için önemsiz. Beklenmedik
+        # bir segment (int'e çevrilemeyen) tüm versiyonu (0,)'a düşürüp aynı
+        # gruba yığmak yerine sadece o segmenti 0 sayıyoruz.
+        core = v.split("-")[0]
+        parts = []
+        for p in core.split("."):
+            try:
+                parts.append(int(p))
+            except ValueError:
+                parts.append(0)
+        return tuple(parts)
 
     return sorted(versions, key=sort_key, reverse=True)
 

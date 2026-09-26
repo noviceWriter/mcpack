@@ -28,7 +28,7 @@ from mcpack.export.base import (
     ensure_mods_downloaded,
     write_zip,
 )
-from mcpack.models import Loader, ModSourceType, Pack
+from mcpack.models import ContentKind, Loader, ModSourceType, Pack
 
 _LOADER_ID_PREFIX = {
     Loader.FABRIC: "fabric",
@@ -108,7 +108,10 @@ class CurseForgeExporter(Exporter):
             exclude_dirs=exclude_dirs if exclude_dirs is not None else EXCLUDED_OVERRIDE_DIR_NAMES,
         )
         override_files += collect_world_files(pack, content_root)
-        override_files += collect_content_download_files(non_cf_content, embedded_content_files)
+        datapack_world_roots = [f"saves/{w.name}" for w in pack.content_of(ContentKind.WORLD)]
+        override_files += collect_content_download_files(
+            non_cf_content, embedded_content_files, datapack_world_roots=datapack_world_roots
+        )
         for path in embedded_mod_files.values():
             override_files.append((path, f"mods/{path.name}"))
 

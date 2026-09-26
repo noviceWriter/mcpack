@@ -107,7 +107,10 @@ class ServerPackExporter(Exporter):
         # — server pack'e sadece datapack ve (seçildiyse) dünya dahil edilir.
         datapacks = pack.content_downloads_of(ContentKind.DATAPACK)
         downloaded_datapacks = await ensure_mods_downloaded(datapacks, cache_dir, client, cancel_event=cancel_event)
-        override_files += collect_content_download_files(datapacks, downloaded_datapacks)
+        override_files += collect_content_download_files(
+            datapacks, downloaded_datapacks,
+            datapack_world_roots=["world"] if selected_world is not None else None,
+        )
         if selected_world is not None:
             override_files += collect_world_files(pack, content_root, selected_world=selected_world)
 

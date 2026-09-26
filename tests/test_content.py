@@ -85,6 +85,72 @@ def test_add_content_same_name_replaces_existing(tmp_path: Path):
     assert (manager.content_root(pack) / entry.stored_path / "level.dat").read_bytes() == b"v2"
 
 
+def test_add_content_rejects_path_traversal_in_display_name(tmp_path: Path):
+    """display_name CurseForge'tan gelen bir proje başlığı olabilir (güvenilmeyen
+    girdi) — içinde ".." geçmesi content_root'un dışına yazmaya çalışmamalı."""
+    manager = PackManager(tmp_path / "packs")
+    pack = _make_pack()
+
+    world_dir = tmp_path / "World"
+    world_dir.mkdir()
+    (world_dir / "level.dat").write_bytes(b"data")
+
+    entry = manager.add_content(
+        pack, ContentKind.WORLD, world_dir, display_name="../../../../tmp/evil"
+    )
+
+    assert entry.name == "evil"
+    assert manager.content_root(pack) in (manager.content_root(pack) / entry.stored_path).resolve().parents
+    assert not (tmp_path / "evil").exists()
+
+
+def test_add_content_refuses_to_silently_overwrite_untracked_collision(tmp_path: Path):
+    """Aynı ad+kind ama pack'in HENÜZ bilmediği bir klasör zaten varsa (ör. iki
+    farklı dünyanın ikisi de varsayılan "New World" adını taşıyor) sessizce
+    üzerine yazıp birinin verisini silmek yerine hata verilmeli."""
+    manager = PackManager(tmp_path / "packs")
+    pack = _make_pack()
+
+    first_world = tmp_path / "First"
+    first_world.mkdir()
+    (first_world / "level.dat").write_bytes(b"first")
+    manager.add_content(pack, ContentKind.WORLD, first_world, display_name="New World")
+
+    second_world = tmp_path / "Second"
+    second_world.mkdir()
+    (second_world / "level.dat").write_bytes(b"second")
+
+    with pytest.raises(ValueError):
+        # pack.content'ten "New World" adıyla add_content dışında bir yolla
+        # çıkarılmış olsa bile diskteki klasör hâlâ duruyor.
+        pack.content.clear()
+        manager.add_content(pack, ContentKind.WORLD, second_world, display_name="New World")
+
+    stored = manager.content_root(pack) / "worlds" / "New World"
+    assert (stored / "level.dat").read_bytes() == b"first"
+
+
+def test_delete_pack_removes_content_root(tmp_path: Path):
+    """Pack silindiğinde content/<pack_id>/'ye kopyalanmış dünya/shader/
+    resourcepack/datapack dosyaları da silinmeli — aksi halde yetim kalıp
+    diskte sonsuza kadar kalırlar."""
+    manager = PackManager(tmp_path / "packs")
+    pack = _make_pack()
+    manager.save(pack)
+
+    world_dir = tmp_path / "World"
+    world_dir.mkdir()
+    (world_dir / "level.dat").write_bytes(b"data")
+    manager.add_content(pack, ContentKind.WORLD, world_dir)
+
+    content_root = manager.content_root(pack)
+    assert content_root.exists()
+
+    manager.delete(pack.id)
+
+    assert not content_root.exists()
+
+
 def test_remove_content_deletes_folder_and_entry(tmp_path: Path):
     manager = PackManager(tmp_path / "packs")
     pack = _make_pack()
@@ -235,6 +301,46 @@ async def test_mrpack_export_embeds_content_downloads_and_world(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_mrpack_export_places_datapack_inside_bundled_world(tmp_path: Path):
+    """Datapack Minecraft'ta sadece bir dünya kaydının içinden okunur — client
+    pack'e dünya eklenmişse datapack "saves/<dünya>/datapacks/" altına
+    gitmeli, top-level "overrides/datapacks/" değil (bkz. export/base.py)."""
+    manager = PackManager(tmp_path / "packs")
+    pack = _make_pack(loader=Loader.FABRIC, loader_version="0.16.5")
+
+    world_dir = tmp_path / "MyWorld"
+    world_dir.mkdir()
+    (world_dir / "level.dat").write_bytes(b"worlddata")
+    manager.add_content(pack, ContentKind.WORLD, world_dir)
+
+    datapack_version = _make_version(url="https://cdn.modrinth.com/dp.zip", file_name="dp.zip")
+    manager.add_content_download(pack, ContentKind.DATAPACK, datapack_version)
+
+    source_dir = tmp_path / "src"
+    source_dir.mkdir()
+    output_path = tmp_path / "out.mrpack"
+
+    with respx.mock as mock:
+        mock.get("https://cdn.modrinth.com/dp.zip").mock(
+            return_value=httpx.Response(200, content=b"fake-dp-bytes")
+        )
+        async with httpx.AsyncClient() as client:
+            await MrpackExporter().export(
+                pack,
+                source_dir=source_dir,
+                output_path=output_path,
+                cache_dir=tmp_path / "cache",
+                content_root=manager.content_root(pack),
+                client=client,
+            )
+
+    with zipfile.ZipFile(output_path) as zf:
+        names = set(zf.namelist())
+        assert "overrides/saves/MyWorld/datapacks/dp.zip" in names
+        assert not any(n == "overrides/datapacks/dp.zip" for n in names)
+
+
+@pytest.mark.asyncio
 async def test_curseforge_export_references_cf_content_and_embeds_others(tmp_path: Path):
     manager = PackManager(tmp_path / "packs")
     pack = _make_pack(loader=Loader.FABRIC, loader_version="0.16.5")
@@ -317,7 +423,10 @@ async def test_server_pack_includes_selected_world_and_datapacks_excludes_shader
     with zipfile.ZipFile(output_path) as zf:
         names = set(zf.namelist())
         assert "world/level.dat" in names
-        assert "datapacks/dp.zip" in names
+        # Datapack sadece bir dünya kaydının içinden okunur — top-level
+        # "datapacks/" değil, seçilen dünyanın "world/datapacks/" altına
+        # gitmeli (bkz. export/base.py:collect_content_download_files).
+        assert "world/datapacks/dp.zip" in names
         assert not any(n.startswith("shaderpacks/") for n in names)
 
 

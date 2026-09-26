@@ -161,18 +161,34 @@ def collect_world_files(
 
 
 def collect_content_download_files(
-    downloads: list[ContentDownload], downloaded: dict[str, Path]
+    downloads: list[ContentDownload],
+    downloaded: dict[str, Path],
+    *,
+    datapack_world_roots: list[str] | None = None,
 ) -> list[tuple[Path, str]]:
     """ensure_mods_downloaded ile cache'e indirilmiş shader/resourcepack/
     datapack dosyalarını (gerçek_yol, arşiv_içi_göreli_yol) çiftleri olarak
-    döner — her biri kendi türünün top-level arşiv klasörüne (shaderpacks/,
-    resourcepacks/, datapacks/) yerleştirilir."""
+    döner. Shader/resourcepack global olduğu için kendi top-level arşiv
+    klasörüne (shaderpacks/, resourcepacks/) yerleştirilir.
+
+    Datapack ise Minecraft'ta SADECE bir dünya kaydının içinden
+    (<dünya>/datapacks/) okunur — top-level bir "datapacks/" klasörünün
+    hiçbir etkisi olmaz. datapack_world_roots verilirse (bkz.
+    collect_world_files'ın döndürdüğü arşiv kökleri, ör. "world" ya da
+    "saves/<ad>") datapack her birinin altına (birden fazla dünya varsa
+    hepsine) kopyalanır. Hiç dünya yoksa (pack'e henüz dünya eklenmemiş)
+    elden bir yerleştirme imkanı olmadığı için top-level "datapacks/"e
+    düşer — kullanıcı export sonrası elle bir dünyaya taşımalı."""
     files: list[tuple[Path, str]] = []
     for entry in downloads:
         path = downloaded.get(entry.project_id)
         if path is None:
             continue
-        files.append((path, f"{CONTENT_ARCHIVE_DIRS[entry.kind]}/{path.name}"))
+        if entry.kind == ContentKind.DATAPACK and datapack_world_roots:
+            for world_root in datapack_world_roots:
+                files.append((path, f"{world_root}/datapacks/{path.name}"))
+        else:
+            files.append((path, f"{CONTENT_ARCHIVE_DIRS[entry.kind]}/{path.name}"))
     return files
 
 

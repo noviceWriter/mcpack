@@ -27,7 +27,7 @@ from mcpack.export.base import (
     ensure_mods_downloaded,
     write_zip,
 )
-from mcpack.models import Loader, Pack
+from mcpack.models import ContentKind, Loader, Pack
 
 _LOADER_COMPONENT = {
     Loader.FABRIC: ("net.fabricmc.fabric-loader", "Fabric Loader"),
@@ -112,7 +112,10 @@ class PrismExporter(Exporter):
         downloaded_content = await ensure_mods_downloaded(
             pack.content_downloads, cache_dir, client, cancel_event=cancel_event
         )
-        override_files += collect_content_download_files(pack.content_downloads, downloaded_content)
+        datapack_world_roots = [f"saves/{w.name}" for w in pack.content_of(ContentKind.WORLD)]
+        override_files += collect_content_download_files(
+            pack.content_downloads, downloaded_content, datapack_world_roots=datapack_world_roots
+        )
 
         return write_zip(
             output_path,

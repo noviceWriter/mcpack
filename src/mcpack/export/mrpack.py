@@ -25,7 +25,7 @@ from mcpack.export.base import (
     ensure_mods_downloaded,
     write_zip,
 )
-from mcpack.models import Loader, ModEntry, Pack
+from mcpack.models import ContentKind, Loader, ModEntry, Pack
 
 _LOADER_DEPENDENCY_KEY = {
     Loader.FABRIC: "fabric-loader",
@@ -96,7 +96,10 @@ class MrpackExporter(Exporter):
         downloaded_content = await ensure_mods_downloaded(
             pack.content_downloads, cache_dir, client, progress_cb=progress_cb, cancel_event=cancel_event
         )
-        override_files += collect_content_download_files(pack.content_downloads, downloaded_content)
+        datapack_world_roots = [f"saves/{w.name}" for w in pack.content_of(ContentKind.WORLD)]
+        override_files += collect_content_download_files(
+            pack.content_downloads, downloaded_content, datapack_world_roots=datapack_world_roots
+        )
         if progress_cb:
             progress_cb(1, 1)
         return write_zip(

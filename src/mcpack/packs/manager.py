@@ -134,6 +134,10 @@ class PackManager:
 
     def delete(self, pack_id: str) -> None:
         storage.delete_pack(pack_id, self.packs_dir)
+        # pack.json silinince content/<pack_id>/'ye kopyalanmış dünya/shader/
+        # resourcepack/datapack dosyaları yetim kalıp diskte sonsuza kadar
+        # kalırdı — pack'le birlikte onları da temizliyoruz.
+        shutil.rmtree(self.packs_dir / "content" / pack_id, ignore_errors=True)
 
     def content_root(self, pack: Pack) -> Path:
         """Pack'e yüklenmiş shader/resourcepack/datapack/dünya dosyalarının
@@ -153,11 +157,30 @@ class PackManager:
         display_name: verilirse pack.content'teki ad (ve dolayısıyla export'taki
         klasör adı) source_path'in gerçek dosya adı yerine bunu kullanır — ör.
         CurseForge'tan indirilip geçici bir klasöre açılan bir dünyaya asıl
-        proje adını vermek için (bkz. add_world_from_download)."""
-        name = display_name or source_path.name
+        proje adını vermek için (bkz. add_world_from_download).
+
+        display_name CurseForge'tan gelen bir proje başlığı olabileceği için
+        (güvenilmeyen girdi) Path(...).name ile SADECE son bileşenine indirgenir
+        — aksi halde içinde ".." ya da "/" geçen bir başlık content_root'un
+        dışına yazmaya çalışabilirdi (path traversal)."""
+        name = Path(display_name or source_path.name).name
+        if not name or name in {".", ".."}:
+            raise ValueError("Geçersiz içerik adı.")
         dest_dir = self.content_root(pack) / _CONTENT_SUBDIR[kind]
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / name
+
+        already_tracked = any(c.kind == kind and c.name == name for c in pack.content)
+        if dest.exists() and not already_tracked:
+            # Aynı ada sahip ama pack'in HENÜZ bilmediği bir klasör/dosya zaten
+            # var — ör. iki farklı dünyanın ikisi de varsayılan "New World"
+            # adını taşıyor. Sessizce üzerine yazıp birinin verisini silmek
+            # yerine kullanıcıya haber veriyoruz (bilinen ad+kind'ı GÜNCELLEMEK
+            # hâlâ serbest, bkz. already_tracked).
+            raise ValueError(
+                f"'{name}' adında farklı bir içerik zaten var — önce onu kaldırın ya da yeniden adlandırın."
+            )
+
         is_dir = source_path.is_dir()
         if is_dir:
             if dest.exists():

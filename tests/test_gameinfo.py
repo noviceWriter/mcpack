@@ -76,6 +76,36 @@ async def test_get_forge_versions_returns_full_catalog_sorted_desc():
     assert versions == ["47.4.0", "47.3.1", "47.2.0"]
 
 
+_LEGACY_FORGE_METADATA_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <groupId>net.minecraftforge</groupId>
+  <artifactId>forge</artifactId>
+  <versioning>
+    <versions>
+      <version>1.7.10-10.13.4.1614-1.7.10</version>
+      <version>1.7.10-10.13.4.1558-1.7.10</version>
+      <version>1.7.10-10.13.2.1291</version>
+    </versions>
+  </versioning>
+</metadata>
+"""
+
+
+@pytest.mark.asyncio
+async def test_get_forge_versions_sorts_legacy_double_suffixed_builds():
+    """Eski Forge build'leri MC versiyonunu maven versiyonuna ikinci kez ekliyor
+    (ör. "10.13.4.1614-1.7.10") — bu "-" sonrası build numarasına dahil değil,
+    sıralamayı bozmamalı (bkz. gameinfo.py sort_key)."""
+    with respx.mock:
+        respx.get(FORGE_MAVEN_METADATA_URL).mock(
+            return_value=httpx.Response(200, text=_LEGACY_FORGE_METADATA_XML)
+        )
+        async with httpx.AsyncClient() as client:
+            versions = await get_forge_versions(client, "1.7.10")
+
+    assert versions == ["10.13.4.1614-1.7.10", "10.13.4.1558-1.7.10", "10.13.2.1291"]
+
+
 @pytest.mark.asyncio
 async def test_get_forge_versions_empty_when_no_match():
     with respx.mock:

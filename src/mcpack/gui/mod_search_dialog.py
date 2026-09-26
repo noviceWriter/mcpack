@@ -16,7 +16,7 @@ sunar (kullanıcının kendi haritası/kayıt dosyası olabilir)."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -45,6 +45,7 @@ _SEARCHABLE_CONTENT: list[tuple[ContentKind, str, str]] = [
 class ModSearchDialog(QDialog):
     world_added = Signal(str)  # seçilen dünya klasörünün yolu
     world_removed = Signal(str)  # ad (klasör adı)
+    content_removed = Signal(object, str)  # ContentKind, project_id
 
     def __init__(self, pack: Pack, parent=None) -> None:
         super().__init__(parent)
@@ -64,15 +65,10 @@ class ModSearchDialog(QDialog):
             self.pages.addWidget(self.search_panel)
 
         self.content_search_panels: dict[ContentKind, SearchPanel] = {}
+        self._installed_content_lists: dict[ContentKind, QListWidget] = {}
         for kind, label, placeholder in _SEARCHABLE_CONTENT:
             self.content_menu.addItem(QListWidgetItem(label))
-            panel = SearchPanel(
-                title=f"{label} Ara",
-                query_placeholder=placeholder,
-                add_button_text=f"Seçili {label.lower()}i Pack'e Ekle",
-            )
-            self.content_search_panels[kind] = panel
-            self.pages.addWidget(panel)
+            self.pages.addWidget(self._make_content_page(kind, label, placeholder))
 
         self._world_list = QListWidget()
         self.content_menu.addItem(QListWidgetItem("Dünya"))
@@ -85,6 +81,45 @@ class ModSearchDialog(QDialog):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.addWidget(self.content_menu, 0)
         layout.addWidget(self.pages, 1)
+
+        self.refresh_content(pack)
+
+    def _make_content_page(self, kind: ContentKind, label: str, placeholder: str) -> QWidget:
+        """Shader/datapack/görüntü paketi arama sekmesi — arama sonuçlarının
+        altında, o türden zaten eklenmiş olanları gösteren ve kaldırmayı
+        sağlayan bir liste var (dünya sekmesindeki aynı desen — daha önce
+        PackManager.remove_content_download çağıracak hiçbir GUI kontrolü
+        yoktu, tek yol pack JSON'unu elle düzenlemekti)."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        panel = SearchPanel(
+            title=f"{label} Ara",
+            query_placeholder=placeholder,
+            add_button_text=f"Seçili {label.lower()}i Pack'e Ekle",
+        )
+        self.content_search_panels[kind] = panel
+        layout.addWidget(panel, 1)
+
+        layout.addWidget(QLabel(f"Eklenmiş {label.lower()}ler:"))
+        installed_list = QListWidget()
+        installed_list.setMaximumHeight(110)
+        self._installed_content_lists[kind] = installed_list
+        layout.addWidget(installed_list)
+
+        remove_button = QPushButton(f"Seçili {label.lower()}i kaldır")
+        remove_button.setObjectName("danger")
+        remove_button.clicked.connect(lambda _checked=False, k=kind: self._remove_selected_content(k))
+        layout.addWidget(remove_button)
+
+        return page
+
+    def _remove_selected_content(self, kind: ContentKind) -> None:
+        item = self._installed_content_lists[kind].currentItem()
+        if item is None:
+            return
+        project_id = item.data(Qt.ItemDataRole.UserRole)
+        self.content_removed.emit(kind, project_id)
 
     def _make_world_page(self) -> QWidget:
         page = QWidget()
@@ -149,7 +184,14 @@ class ModSearchDialog(QDialog):
         self.pack = pack
         self._refresh_world_list()
         for kind, panel in self.content_search_panels.items():
-            panel.set_added_project_ids({c.project_id for c in pack.content_downloads_of(kind)})
+            downloads = pack.content_downloads_of(kind)
+            panel.set_added_project_ids({c.project_id for c in downloads})
+            installed_list = self._installed_content_lists[kind]
+            installed_list.clear()
+            for entry in downloads:
+                item = QListWidgetItem(entry.name or entry.file_name)
+                item.setData(Qt.ItemDataRole.UserRole, entry.project_id)
+                installed_list.addItem(item)
 
     def _refresh_world_list(self) -> None:
         self._world_list.clear()

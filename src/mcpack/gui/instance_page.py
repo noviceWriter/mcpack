@@ -104,6 +104,7 @@ class ModsSection(QWidget):
     add_mod_clicked = Signal()
     remove_mod_requested = Signal(str)
     edit_env_requested = Signal(str)
+    check_dependencies_clicked = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -182,6 +183,10 @@ class ModsSection(QWidget):
         env_button = QPushButton("İstemci/Sunucu Düzelt")
         env_button.clicked.connect(self._on_edit_env_clicked)
         button_row.addWidget(env_button)
+
+        check_deps_button = QPushButton("Bağımlılıkları Kontrol Et")
+        check_deps_button.clicked.connect(self.check_dependencies_clicked.emit)
+        button_row.addWidget(check_deps_button)
         button_row.addStretch()
         outer.addWidget(self.actions_bar)
 

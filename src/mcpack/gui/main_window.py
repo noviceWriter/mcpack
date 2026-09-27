@@ -155,6 +155,7 @@ class MainWindow(QMainWindow):
         mods.remove_mod_requested.connect(self.remove_mod)
         mods.edit_env_requested.connect(self.edit_mod_env)
         mods.add_mod_clicked.connect(lambda: self.open_mod_search_dialog(None))
+        mods.check_dependencies_clicked.connect(self.check_dependencies)
 
         for kind, section in self.instance_page.content_sections.items():
             section.add_requested.connect(lambda k=kind: self.open_mod_search_dialog(k))
@@ -506,7 +507,7 @@ class MainWindow(QMainWindow):
             self.set_status(f"{result.title} zaten pack'te.")
             return
 
-        async def task() -> list[tuple]:
+        async def task() -> tuple[list[tuple], list[str]]:
             source = self._make_source(result.source.value)
             try:
                 detail = await source.get_project(result.project_id)
@@ -517,7 +518,7 @@ class MainWindow(QMainWindow):
                     raise RuntimeError(f"{result.title}: {pack.minecraft}/{pack.loader.value} için uyumlu versiyon yok")
                 self.manager.add_mod(pack, versions[0], detail)
 
-                deps = await self.manager.resolve_dependencies(pack, source, versions[0])
+                deps, failed_deps = await self.manager.resolve_dependencies(pack, source, versions[0])
                 for dep_version in deps:
                     dep_detail = await source.get_project(dep_version.project_id)
                     self.manager.add_mod(pack, dep_version, dep_detail)
@@ -531,17 +532,33 @@ class MainWindow(QMainWindow):
                 for opt_version in optional_versions:
                     opt_detail = await source.get_project(opt_version.project_id)
                     suggestions.append((opt_version, opt_detail))
-                return suggestions
+                return suggestions, failed_deps
             finally:
                 await source.aclose()
 
         self.set_status(f"{result.title} ekleniyor...")
         run_async(task, on_success=self._on_mod_added, on_error=self._on_error)
 
-    def _on_mod_added(self, suggestions: list[tuple[ModVersion, ModDetail]]) -> None:
+    def _on_mod_added(self, result: tuple[list[tuple[ModVersion, ModDetail]], list[str]]) -> None:
+        suggestions, failed_deps = result
         self.instance_page.show_pack(self.current_pack)
         self.set_status("Mod eklendi")
         self._refresh_added_markers()
+
+        if failed_deps:
+            # Sessizce atlamak yerine kullanıcıyı HEMEN uyar — bu tam olarak
+            # "Prism'de açılışta hata verdi, zorunlu mod eksikmiş" senaryosunun
+            # kök nedeniydi (bkz. resolve_dependencies).
+            QMessageBox.warning(
+                self,
+                "Eksik Zorunlu Bağımlılık",
+                "Bu mod için gerekli olan bazı bağımlılıklar otomatik eklenemedi "
+                f"(pack'in {self.current_pack.minecraft}/{self.current_pack.loader.value} "
+                "kombinasyonu için uyumlu bir versiyonları bulunamadı):\n\n"
+                + "\n".join(f"• {name}" for name in failed_deps)
+                + "\n\nBu mod muhtemelen bu bağımlılıklar olmadan çalışmayacaktır — "
+                "elle eklemeyi deneyin ya da uyumlu bir Minecraft/loader versiyonu seçin.",
+            )
 
         if not suggestions or not self.current_pack:
             return
@@ -648,11 +665,106 @@ class MainWindow(QMainWindow):
             self._cancel_event.set()
             self.set_status("İptal ediliyor...")
 
+    def _confirm_dependencies_ok(self, pack: Pack) -> bool:
+        """Kullanıcı isteği: "mod kontrol kısmını sert bir şekilde kontrol
+        sistemi ekleyelim" — bir pack'i Prism/CurseForge/SKLauncher'a
+        aktarmadan önce, pack'teki modların kayıtlı zorunlu bağımlılıklarının
+        (bkz. ModEntry.dependencies, mod eklenirken kaydedilir) hâlâ pack'te
+        olup olmadığını kontrol eder. Eksik bir zorunlu bağımlılıkla export
+        edilen pack genelde oyunun açılışta çökmesiyle sonuçlanır (kullanıcı
+        geri bildirimi: "Prism'de açılışta hata verdi, zorunlu modlar
+        yüklenmemiş" — kök neden: resolve_dependencies bir bağımlılığın
+        uyumlu versiyonunu bulamayınca sessizce atlıyordu, bkz. o fonksiyonun
+        güncellenmiş docstring'i). Varsayılan olarak durdurur; kullanıcı
+        bilerek "Yine de Devam Et" derse izin verir."""
+        missing = self.manager.find_missing_dependencies(pack)
+        if not missing:
+            return True
+
+        by_mod: dict[str, list[str]] = {}
+        for mod_name, dep_id in missing:
+            by_mod.setdefault(mod_name, []).append(dep_id)
+        lines = [f"• {mod}: {', '.join(deps)}" for mod, deps in by_mod.items()]
+
+        answer = QMessageBox.warning(
+            self,
+            "Eksik Zorunlu Bağımlılıklar",
+            "Bu pack'teki bazı modların gerektirdiği zorunlu bağımlılıklar "
+            "pack'te yok. Bu haliyle export edilirse oyun büyük ihtimalle "
+            "açılışta çökecektir:\n\n"
+            + "\n".join(lines)
+            + "\n\nYine de devam etmek istiyor musunuz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def check_dependencies(self) -> None:
+        """Modlar bölümündeki "Bağımlılıkları Kontrol Et" butonu — export
+        beklemeden, istediği zaman elle kontrol edebilsin diye
+        (bkz. _confirm_dependencies_ok — export/server pack/SKLauncher
+        öncesi otomatik çalışan aynı kontrolün engelsiz hâli).
+
+        Ham project_id yerine gerçek mod adını göstermek için (ör. "Prism",
+        "Architectury API") eksik bağımlılıkların adlarını ağdan çözüyor —
+        bu buton anlık bir tanı aracı olduğu için kısa bir gecikme kabul
+        edilebilir (export öncesi otomatik kapıda böyle bir gecikme
+        istenmez, o yüzden _confirm_dependencies_ok çevrimdışı/id ile kalır)."""
+        if not self.current_pack:
+            QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
+            return
+        pack = self.current_pack
+
+        missing = self.manager.find_missing_dependencies(pack)
+        if not missing:
+            QMessageBox.information(
+                self, "Bağımlılık Kontrolü",
+                "Sorun yok — pack'teki hiçbir modun bilinen, eksik bir zorunlu bağımlılığı yok.",
+            )
+            return
+
+        async def task() -> list[str]:
+            lines = []
+            by_mod: dict[str, list[str]] = {}
+            for mod_name, dep_id in missing:
+                by_mod.setdefault(mod_name, []).append(dep_id)
+
+            for mod_name, dep_ids in by_mod.items():
+                parent = next((m for m in pack.mods if (m.name or m.file_name) == mod_name), None)
+                source_name = parent.source.value if parent else ModSourceType.MODRINTH.value
+                source = self._make_source(source_name)
+                try:
+                    dep_labels = []
+                    for dep_id in dep_ids:
+                        try:
+                            detail = await source.get_project(dep_id)
+                            dep_labels.append(detail.title)
+                        except Exception:  # noqa: BLE001 - isim alınamazsa id ile devam
+                            dep_labels.append(dep_id)
+                    lines.append(f"• {mod_name}: {', '.join(dep_labels)}")
+                finally:
+                    await source.aclose()
+            return lines
+
+        def on_success(lines: list[str]) -> None:
+            self.set_status("Hazır")
+            QMessageBox.warning(
+                self, "Eksik Zorunlu Bağımlılıklar",
+                "Şu modların gerektirdiği zorunlu bağımlılıklar pack'te yok — "
+                "bu haliyle export edilirse oyun büyük ihtimalle açılışta çökecektir:\n\n"
+                + "\n".join(lines),
+            )
+
+        self.set_status("Bağımlılıklar kontrol ediliyor...")
+        run_async(task, on_success=on_success, on_error=self._on_error)
+
     def do_export(self, format_key: str) -> None:
         if not self.current_pack:
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
             return
         pack = self.current_pack
+        if not self._confirm_dependencies_ok(pack):
+            return
         exporter_cls = _FORMAT_EXPORTERS[format_key]
 
         output_path, _ = QFileDialog.getSaveFileName(
@@ -732,6 +844,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
             return
         pack = self.current_pack
+        if not self._confirm_dependencies_ok(pack):
+            return
 
         selected_world = self._ask_server_pack_world(pack)
 
@@ -775,6 +889,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Uyarı", "Önce Ayarlar'dan SKLauncher yolunu belirleyin.")
             return
         pack = self.current_pack
+        if not self._confirm_dependencies_ok(pack):
+            return
         source_dir = self._pick_source_dir()
         cancel_event = self._begin_cancellable_task()
 

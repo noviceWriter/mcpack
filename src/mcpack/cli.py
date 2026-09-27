@@ -120,11 +120,13 @@ async def cmd_add_mod(args: argparse.Namespace, settings: Settings) -> None:
         entry = manager.add_mod(pack, versions[0], detail)
         print(f"Eklendi: {entry.file_name}")
 
-        deps = await manager.resolve_dependencies(pack, source, versions[0])
+        deps, failed_deps = await manager.resolve_dependencies(pack, source, versions[0])
         for dep_version in deps:
             dep_detail = await source.get_project(dep_version.project_id)
             dep_entry = manager.add_mod(pack, dep_version, dep_detail)
             print(f"  + bağımlılık: {dep_entry.file_name}")
+        for name in failed_deps:
+            print(f"  ! UYARI: zorunlu bağımlılık eklenemedi (uyumlu versiyon yok): {name}", file=sys.stderr)
 
         optional_versions = await manager.resolve_optional_dependencies(pack, source, versions[0])
         if optional_versions:

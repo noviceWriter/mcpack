@@ -20,6 +20,49 @@ def _add_dummy_mod(manager: PackManager, pack, project_id: str = "sodium") -> No
     manager.save(pack)
 
 
+def test_find_missing_dependencies_detects_gap(tmp_path: Path):
+    manager = PackManager(tmp_path)
+    pack = manager.create_pack(name="Test", minecraft="1.21.1", loader=Loader.FABRIC, loader_version="0.16.5")
+
+    entry = ModEntry(
+        source=ModSourceType.MODRINTH,
+        project_id="sodium-extra",
+        name="Sodium Extra",
+        version_id="1",
+        file_name="sodium-extra.jar",
+        download_url="https://example.com/mod.jar",
+        hashes=ModHashes(),
+        dependencies=["sodium"],  # "sodium" pack'te YOK
+    )
+    pack.mods.append(entry)
+    manager.save(pack)
+
+    missing = manager.find_missing_dependencies(pack)
+
+    assert missing == [("Sodium Extra", "sodium")]
+
+
+def test_find_missing_dependencies_empty_when_dependency_present(tmp_path: Path):
+    manager = PackManager(tmp_path)
+    pack = manager.create_pack(name="Test", minecraft="1.21.1", loader=Loader.FABRIC, loader_version="0.16.5")
+    _add_dummy_mod(manager, pack, "sodium")
+
+    entry = ModEntry(
+        source=ModSourceType.MODRINTH,
+        project_id="sodium-extra",
+        name="Sodium Extra",
+        version_id="1",
+        file_name="sodium-extra.jar",
+        download_url="https://example.com/mod.jar",
+        hashes=ModHashes(),
+        dependencies=["sodium"],
+    )
+    pack.mods.append(entry)
+    manager.save(pack)
+
+    assert manager.find_missing_dependencies(pack) == []
+
+
 def test_set_mod_env_updates_and_persists(tmp_path: Path):
     manager = PackManager(tmp_path)
     pack = manager.create_pack(name="Test", minecraft="1.21.1", loader=Loader.FABRIC, loader_version="0.16.5")

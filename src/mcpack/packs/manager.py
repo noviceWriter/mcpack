@@ -305,13 +305,23 @@ class PackManager:
         pack: Pack,
         source: ModSource,
         version: ModVersion,
-    ) -> list[ModVersion]:
+    ) -> tuple[list[ModVersion], list[str]]:
         """Bir versiyonun required bağımlılıklarını, pack'te henüz olmayanlar
         için yinelemeli olarak Modrinth/CurseForge'tan çeker.
 
         Döngüsel bağımlılıklara karşı ziyaret edilen project_id'leri takip eder.
-        """
+
+        Döner: (otomatik eklenecek çözülmüş versiyonlar, ÇÖZÜLEMEYEN zorunlu
+        bağımlılıkların adları). İkinci liste önceden yok sayılıp sessizce
+        atlanıyordu — pack.minecraft/pack.loader için o bağımlılığın uyumlu
+        bir versiyonu yoksa (ör. mod farklı bir MC/loader kombinasyonuna göre
+        güncellenmiş), eklenen mod SESSİZCE eksik bir zorunlu bağımlılıkla
+        kalıyor, bu da genelde oyunun açılışta çökmesiyle sonuçlanıyordu
+        (kullanıcı geri bildirimi: "Prism'de açılışta hata verdi, zorunlu
+        modlar yüklenmemiş"). Artık bu isim listesiyle çağıran taraf
+        (gui/main_window.py) kullanıcıyı uyarabiliyor."""
         resolved: list[ModVersion] = []
+        failed_names: list[str] = []
         visited: set[str] = {version.project_id, *(m.project_id for m in pack.mods)}
         queue = [
             d.project_id
@@ -329,6 +339,13 @@ class PackManager:
                 project_id, game_version=pack.minecraft, loader=pack.loader
             )
             if not versions:
+                label = project_id
+                try:
+                    dep_detail = await source.get_project(project_id)
+                    label = dep_detail.title
+                except Exception:  # noqa: BLE001 - isim alınamazsa id ile devam
+                    pass
+                failed_names.append(label)
                 continue
             dep_version = versions[0]
             resolved.append(dep_version)
@@ -339,7 +356,26 @@ class PackManager:
                 if d.dependency_type == "required" and d.project_id and d.project_id not in visited
             )
 
-        return resolved
+        return resolved, failed_names
+
+    def find_missing_dependencies(self, pack: Pack) -> list[tuple[str, str]]:
+        """Pack'teki her modun kayıtlı zorunlu bağımlılıklarının (bkz.
+        ModEntry.dependencies — mod eklenirken kaydedilir) hâlâ pack'te olup
+        olmadığını çevrimdışı, hızlıca kontrol eder ("sert kontrol" —
+        export/server pack/SKLauncher öncesi engelleyici doğrulama için,
+        bkz. main_window.py). Ağa gitmez; sadece pack'in kendi verisine bakar.
+
+        Döner: (modun adı/dosya adı, eksik bağımlılığın project_id'si)
+        çiftlerinin listesi — boşsa pack'in bilinen bir eksik bağımlılığı
+        yok demektir (üçüncü taraf/gizli bağımlılıklar bu şekilde
+        yakalanamaz, sadece API'nin bildirdiği açık bağımlılıklar)."""
+        present_ids = {m.project_id for m in pack.mods}
+        missing: list[tuple[str, str]] = []
+        for mod in pack.mods:
+            for dep_id in mod.dependencies:
+                if dep_id not in present_ids:
+                    missing.append((mod.name or mod.file_name, dep_id))
+        return missing
 
     async def resolve_optional_dependencies(
         self,

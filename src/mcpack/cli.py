@@ -189,7 +189,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("query")
     p.add_argument(
         "--source",
-        choices=[*[s.value for s in ModSourceType], "both"],
+        # Wurst/Meteor (ModSourceType.WURST/METEOR) burada YOK — CLI'dan
+        # aranamazlar, sadece GUI'nin ayrı onay akışıyla eklenirler
+        # (bkz. sources/cheat_mods.py).
+        choices=[ModSourceType.MODRINTH.value, ModSourceType.CURSEFORGE.value, "both"],
         default="modrinth",
         help="'both' ile Modrinth+CurseForge birlikte aranır, ayarlardaki prefer_modrinth'e göre çakışanlar tekilleştirilir",
     )
@@ -201,7 +204,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("add-mod", help="Pack'e mod ekle (bağımlılıklarıyla)")
     p.add_argument("pack_id")
     p.add_argument("project_id")
-    p.add_argument("--source", choices=[s.value for s in ModSourceType], default="modrinth")
+    p.add_argument(
+        "--source",
+        choices=[ModSourceType.MODRINTH.value, ModSourceType.CURSEFORGE.value],
+        default="modrinth",
+    )
     p.set_defaults(func=cmd_add_mod)
 
     p = sub.add_parser(

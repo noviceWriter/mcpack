@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QTableWidget,
@@ -36,7 +37,7 @@ from mcpack.gui.widgets import (
     _mod_name_widget,
     _source_indicator_widget,
 )
-from mcpack.models import ContentKind, ModEntry, Pack
+from mcpack.models import ContentKind, Loader, ModEntry, ModSourceType, Pack
 
 _LOADER_ICONS = {
     "vanilla": "🌱",
@@ -58,6 +59,16 @@ _CONTENT_SECTIONS: list[tuple[ContentKind, str, str]] = [
     (ContentKind.RESOURCEPACK, "🖼 Görüntü Paketleri", "🖼"),
     (ContentKind.DATAPACK, "📦 Datapack'ler", "📦"),
 ]
+
+_CHEAT_MOD_SOURCES = (ModSourceType.WURST, ModSourceType.METEOR)
+
+
+def _regular_mods(pack: Pack) -> list[ModEntry]:
+    """pack.mods'tan Wurst/Meteor gibi hile modlarını hariç tutar — onlar
+    kendi ayrı bölümünde (bkz. CheatModsSection) gösterilir, "Modlar"
+    tablosunda/sayımında TEKRAR görünmemeli (kullanıcı isteği: "ayrı bir
+    bölümde sunulmalı")."""
+    return [m for m in pack.mods if m.source not in _CHEAT_MOD_SOURCES]
 
 
 def _style_badge(label: QLabel, icon: str, color_hex: str, *, size: int = 40) -> None:
@@ -191,7 +202,7 @@ class ModsSection(QWidget):
         outer.addWidget(self.actions_bar)
 
     def _visible_mods(self, pack: Pack) -> list[ModEntry]:
-        mods = list(pack.mods)
+        mods = _regular_mods(pack)
         query = self.filter_input.text().strip().lower()
         if query:
             mods = [m for m in mods if query in (m.name or "").lower() or query in m.file_name.lower()]
@@ -226,7 +237,7 @@ class ModsSection(QWidget):
             return
 
         is_vanilla = pack.loader.value == "vanilla"
-        show_controls = not is_vanilla and bool(pack.mods)
+        show_controls = not is_vanilla and bool(_regular_mods(pack))
         self.actions_bar.setVisible(show_controls)
         self.filter_input.setVisible(show_controls)
         self.sort_hint.setVisible(show_controls)
@@ -239,7 +250,7 @@ class ModsSection(QWidget):
             self.filter_empty_notice.hide()
             return
 
-        if not pack.mods:
+        if not _regular_mods(pack):
             self.table.hide()
             self.filter_empty_notice.hide()
             self.empty_state.show()
@@ -446,6 +457,109 @@ class WorldSection(QWidget):
             self.remove_requested.emit(item.text())
 
 
+_CHEAT_MOD_DISCLAIMER = (
+    "Wurst Client ve Meteor Client birer \"hile\" (cheat/utility) istemcisidir.\n\n"
+    "• Bu modların kullanımı çoğu sunucunun kurallarına aykırıdır ve hesabınızın/"
+    "karakterinizin o sunucudan banlanmasına yol açabilir.\n"
+    "• Sadece izin verilen sunucularda ya da tek kişilik (singleplayer) "
+    "dünyalarda, kendi sorumluluğunuzda kullanın.\n"
+    "• MC Pack Manager ve geliştiricisi bu modların kullanımından doğacak "
+    "hiçbir sonuçtan sorumlu değildir.\n\n"
+    "Devam ederek bu şartları kabul etmiş olursunuz. İndirmek istiyor musunuz?"
+)
+
+
+class CheatModsSection(QWidget):
+    """Wurst Client / Meteor Client — CurseForge/Modrinth'in platform
+    kurallarına aykırı bularak barındırmadığı hile istemcileri, kendi resmi
+    API'lerinden indirilir (bkz. sources/cheat_mods.py). SADECE Fabric
+    pack'lerinde gösterilir (bkz. InstancePage.show_pack) çünkü ikisi de
+    Fabric-only mod. Her indirmeden önce açık bir sorumluluk reddi + onay
+    istenir — kullanıcı isteği: net uyarı metinleri, onaysız indirme yok."""
+
+    add_requested = Signal(str)  # "wurst" | "meteor"
+    remove_requested = Signal(str)  # project_id ("wurst"/"meteor")
+
+    def __init__(self) -> None:
+        super().__init__()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        warning = QLabel(
+            "⚠ Bu bölüm hile istemcileri içerir. Sunucu kurallarını ihlal edip "
+            "ban ile sonuçlanabilir — sorumluluk size aittir. Detaylar için "
+            "eklerken çıkacak onay penceresini okuyun."
+        )
+        warning.setObjectName("warningBox")
+        warning.setWordWrap(True)
+        outer.addWidget(warning)
+
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["Mod", "Kaynak"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(1, 140)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        outer.addWidget(self.table, 1)
+
+        self.empty_state, _unused_cta = _empty_state(
+            "🎯", "Henüz hile modu eklenmemiş",
+            "Aşağıdaki butonlarla, onay vererek Wurst ya da Meteor Client ekleyebilirsiniz.",
+            "",
+        )
+        _unused_cta.hide()  # tek CTA yeterli değil (iki ayrı mod) — alttaki buton satırı kullanılıyor
+        outer.addWidget(self.empty_state, 1)
+
+        button_row = QHBoxLayout()
+        wurst_button = QPushButton("+ Wurst Client Ekle")
+        wurst_button.clicked.connect(lambda: self._confirm_and_request("wurst"))
+        button_row.addWidget(wurst_button)
+
+        meteor_button = QPushButton("+ Meteor Client Ekle")
+        meteor_button.clicked.connect(lambda: self._confirm_and_request("meteor"))
+        button_row.addWidget(meteor_button)
+
+        remove_button = QPushButton("Seçiliyi Kaldır")
+        remove_button.setObjectName("danger")
+        remove_button.clicked.connect(self._on_remove_clicked)
+        button_row.addWidget(remove_button)
+        button_row.addStretch()
+        outer.addLayout(button_row)
+
+    def _confirm_and_request(self, kind: str) -> None:
+        answer = QMessageBox.warning(
+            self, "Sorumluluk Reddi ve Onay", _CHEAT_MOD_DISCLAIMER,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.add_requested.emit(kind)
+
+    def show_pack(self, pack: Pack | None) -> None:
+        entries = [m for m in pack.mods if m.source in (ModSourceType.WURST, ModSourceType.METEOR)] if pack else []
+        has_entries = bool(entries)
+        self.table.setVisible(has_entries)
+        self.empty_state.setVisible(not has_entries)
+
+        self.table.setRowCount(len(entries))
+        for row, entry in enumerate(entries):
+            name_item = QTableWidgetItem(entry.name or entry.file_name)
+            name_item.setData(Qt.ItemDataRole.UserRole, entry.project_id)
+            self.table.setItem(row, 0, name_item)
+            self.table.setCellWidget(row, 1, _source_indicator_widget(entry.source.value))
+        self.table.resizeRowsToContents()
+
+    def _on_remove_clicked(self) -> None:
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        item = self.table.item(row, 0)
+        if item is not None:
+            self.remove_requested.emit(item.data(Qt.ItemDataRole.UserRole))
+
+
 class InstancePage(QWidget):
     """Prism tarzı instance sayfası: üst başlık + eylemler, solda dikey
     bölüm listesi, sağda seçili bölümün içeriği."""
@@ -531,6 +645,14 @@ class InstancePage(QWidget):
         self.world_section = WorldSection()
         self.stack.addWidget(self.world_section)
 
+        # Cheat Modları: stack widget'ı HER ZAMAN burada (sabit son index),
+        # ama rail satırı sadece Fabric pack'lerinde eklenir (bkz. show_pack)
+        # — bu sayede rail satır index'i ile stack index'i arasındaki 1:1
+        # eşleşme (currentRowChanged -> setCurrentIndex) hep korunur.
+        self.cheat_mods_section = CheatModsSection()
+        self.stack.addWidget(self.cheat_mods_section)
+        self._cheat_rail_item: QListWidgetItem | None = None
+
         self.rail.currentRowChanged.connect(self.stack.setCurrentIndex)
         self.rail.setCurrentRow(0)
 
@@ -546,10 +668,14 @@ class InstancePage(QWidget):
         for section in self.content_sections.values():
             section.show_pack(pack)
         self.world_section.show_pack(pack)
+        self.cheat_mods_section.show_pack(pack)
 
         if pack is None:
             self.title_label.setText("Pack seçilmedi")
             self.subtitle_label.setText("")
+            if self._cheat_rail_item is not None:
+                self.rail.takeItem(self.rail.row(self._cheat_rail_item))
+                self._cheat_rail_item = None
             return
 
         is_vanilla = pack.loader.value == "vanilla"
@@ -557,17 +683,36 @@ class InstancePage(QWidget):
         loader_version = f" {pack.loader_version}" if pack.loader_version else ""
         self.title_label.setText(pack.name)
         self.subtitle_label.setText(
-            f"{loader_label}{loader_version}  ·  MC {pack.minecraft}  ·  {len(pack.mods)} mod"
+            f"{loader_label}{loader_version}  ·  MC {pack.minecraft}  ·  {len(_regular_mods(pack))} mod"
         )
         icon = _LOADER_ICONS.get(pack.loader.value, "❓")
         _style_badge(self.icon_badge, icon, loader_color(pack.loader.value))
 
         rail_labels = ["🧩 Modlar"] + [label for _, label, _ in _CONTENT_SECTIONS] + ["🌍 Dünyalar"]
         counts = (
-            [len(pack.mods)]
+            [len(_regular_mods(pack))]
             + [len(pack.content_downloads_of(kind)) for kind, _, _ in _CONTENT_SECTIONS]
             + [len(pack.content_of(ContentKind.WORLD))]
         )
         for row, (label, count) in enumerate(zip(rail_labels, counts)):
             text = f"{label} ({count})" if count else label
             self.rail.item(row).setText(text)
+
+        # Cheat Modları bölümü SADECE Fabric pack'lerinde gösterilir (Wurst/
+        # Meteor Fabric-only mod) — rail'in EN SONUNA eklenir/kaldırılır ki
+        # stack widget index'i (her zaman sabit, __init__'te en sona eklendi)
+        # ile rail satır index'i arasındaki 1:1 eşleşme bozulmasın.
+        is_fabric = pack.loader == Loader.FABRIC
+        has_cheat_row = self._cheat_rail_item is not None
+        if is_fabric and not has_cheat_row:
+            self._cheat_rail_item = QListWidgetItem("🎯 Cheat Modları")
+            self.rail.addItem(self._cheat_rail_item)
+        elif not is_fabric and has_cheat_row:
+            row = self.rail.row(self._cheat_rail_item)
+            self.rail.takeItem(row)
+            self._cheat_rail_item = None
+
+        if self._cheat_rail_item is not None:
+            cheat_count = sum(1 for m in pack.mods if m.source in _CHEAT_MOD_SOURCES)
+            text = f"🎯 Cheat Modları ({cheat_count})" if cheat_count else "🎯 Cheat Modları"
+            self._cheat_rail_item.setText(text)

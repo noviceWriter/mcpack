@@ -117,7 +117,12 @@ def format_downloads(n: int) -> str:
     return str(n)
 
 
-_SOURCE_LABELS = {"modrinth": "Modrinth", "curseforge": "CurseForge"}
+_SOURCE_LABELS = {
+    "modrinth": "Modrinth",
+    "curseforge": "CurseForge",
+    "wurst": "Wurst Client",
+    "meteor": "Meteor Client",
+}
 
 
 def _mod_name_widget(mod: ModEntry, show_file_name: bool) -> QWidget:
@@ -360,7 +365,11 @@ class SearchPanel(QWidget):
             self.source_combo.setEnabled(False)
         else:
             self.source_combo.addItem("Tümü (Modrinth + CurseForge)", "both")
-            for s in ModSourceType:
+            # Wurst/Meteor (ModSourceType'a sonradan eklendi) burada YOK —
+            # onların search()/get_versions() uygulayan bir ModSource'u yok,
+            # kendi API'lerinden ayrı bir akışla eklenirler (bkz.
+            # sources/cheat_mods.py, gui/instance_page.py:CheatModsSection).
+            for s in (ModSourceType.MODRINTH, ModSourceType.CURSEFORGE):
                 self.source_combo.addItem(_SOURCE_LABELS.get(s.value, s.value), s.value)
         self.source_combo.currentIndexChanged.connect(self._on_search_clicked)
         row.addWidget(self.source_combo)

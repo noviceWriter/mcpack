@@ -276,6 +276,38 @@ class PackManager:
         pack.mods = [m for m in pack.mods if m.project_id != project_id]
         self.save(pack)
 
+    _CHEAT_MOD_LABELS = {ModSourceType.WURST: "Wurst Client", ModSourceType.METEOR: "Meteor Client"}
+    _CHEAT_MOD_PROJECT_IDS = {ModSourceType.WURST: "wurst", ModSourceType.METEOR: "meteor"}
+
+    def add_cheat_mod(self, pack: Pack, source: ModSourceType, file_name: str, download_url: str) -> ModEntry:
+        """Wurst/Meteor gibi CurseForge/Modrinth'te barındırılmayan hile
+        modları için — normal add_mod'un aksine ModSource/ModVersion arama
+        akışından geçmez, zaten çözülmüş (dosya_adı, indirme_url) çiftini
+        (bkz. sources/cheat_mods.py) doğrudan ModEntry'ye çevirir.
+
+        env sabit olarak istemci-zorunlu/sunucu-desteklenmez verilir — bunlar
+        gerçek birer istemci hile aracıdır, sunucu tarafında hiçbir anlamları
+        yok; mevcut server pack filtrelemesi (export/server.py:
+        is_server_compatible) bu sayede onları otomatik dışlar, ayrıca bir
+        özel durum kodu gerekmez."""
+        project_id = self._CHEAT_MOD_PROJECT_IDS[source]
+        existing = pack.find_mod(project_id)
+        if existing:
+            pack.mods.remove(existing)
+        entry = ModEntry(
+            source=source,
+            project_id=project_id,
+            name=self._CHEAT_MOD_LABELS[source],
+            version_id=file_name,
+            file_name=file_name,
+            download_url=download_url,
+            hashes=ModHashes(),
+            env=ModEnv(client=EnvRequirement.REQUIRED, server=EnvRequirement.UNSUPPORTED),
+        )
+        pack.mods.append(entry)
+        self.save(pack)
+        return entry
+
     def set_mod_env(
         self,
         pack: Pack,

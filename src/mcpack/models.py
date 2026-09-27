@@ -25,6 +25,13 @@ class Loader(StrEnum):
 class ModSourceType(StrEnum):
     MODRINTH = "modrinth"
     CURSEFORGE = "curseforge"
+    WURST = "wurst"
+    """Wurst Client — CurseForge/Modrinth'ten platform kurallarına aykırı
+    bulunduğu için yasaklı, kendi API'sinden indirilir (bkz.
+    sources/cheat_mods.py). Normal ModSource arayüzünü (search/get_versions)
+    UYGULAMAZ — sadece PackManager.add_cheat_mod ile doğrudan eklenir."""
+    METEOR = "meteor"
+    """Meteor Client — aynı sebeple (bkz. WURST) kendi API'sinden indirilir."""
 
 
 class EnvRequirement(StrEnum):

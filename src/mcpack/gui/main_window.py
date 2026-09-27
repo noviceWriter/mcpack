@@ -50,6 +50,7 @@ from mcpack.models import ContentKind, EnvRequirement, ModSourceType, Pack
 from mcpack.packs import PackManager
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
 from mcpack.sources.base import ModDetail, ModVersion, SearchResult
+from mcpack.sources.cheat_mods import find_meteor_download, find_wurst_download
 
 _FORMAT_EXPORTERS = {
     "mrpack": MrpackExporter,
@@ -167,6 +168,10 @@ class MainWindow(QMainWindow):
         world.add_online_requested.connect(lambda: self.open_mod_search_dialog(ContentKind.WORLD))
         world.remove_requested.connect(self.remove_world)
 
+        cheat_mods = self.instance_page.cheat_mods_section
+        cheat_mods.add_requested.connect(self.add_cheat_mod)
+        cheat_mods.remove_requested.connect(self.remove_cheat_mod)
+
     # -- durum çubuğu ---------------------------------------------------------
 
     def set_status(self, text: str) -> None:
@@ -283,6 +288,40 @@ class MainWindow(QMainWindow):
         self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
+        self.set_status("Kaldırıldı.")
+
+    def add_cheat_mod(self, kind: str) -> None:
+        """CheatModsSection'ın onay penceresinden ("Sorumluluk Reddi ve
+        Onay") sonra çağrılır — kullanıcı zaten kabul etti, burada sadece
+        pack'in Minecraft versiyonuna uygun build'i bulup (bkz.
+        sources/cheat_mods.py) ekler. Uygun build yoksa (CheatModUnavailableError)
+        normal hata popup'ıyla (self._on_error) gösterilir."""
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+        source = ModSourceType.WURST if kind == "wurst" else ModSourceType.METEOR
+        label = "Wurst Client" if kind == "wurst" else "Meteor Client"
+
+        async def task() -> tuple[str, str]:
+            async with make_client() as client:
+                if kind == "wurst":
+                    return await find_wurst_download(client, pack.minecraft)
+                return await find_meteor_download(client, pack.minecraft)
+
+        def on_success(result: tuple[str, str]) -> None:
+            file_name, download_url = result
+            self.manager.add_cheat_mod(pack, source, file_name, download_url)
+            self.instance_page.show_pack(pack)
+            self.set_status(f"{label} eklendi.")
+
+        self.set_status(f"{label} için Minecraft {pack.minecraft} build'i aranıyor...")
+        run_async(task, on_success=on_success, on_error=self._on_error)
+
+    def remove_cheat_mod(self, project_id: str) -> None:
+        if not self.current_pack:
+            return
+        self.manager.remove_mod(self.current_pack, project_id)
+        self.instance_page.show_pack(self.current_pack)
         self.set_status("Kaldırıldı.")
 
     def edit_mod_env(self, project_id: str) -> None:

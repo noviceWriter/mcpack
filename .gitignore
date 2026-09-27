@@ -8,3 +8,4 @@ dist/
 .pytest_cache/
 data/packs/*.json
 *.spec
+Düzeltilecekler.md

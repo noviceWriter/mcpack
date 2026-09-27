@@ -14,6 +14,7 @@ durum mesajları alt durum çubuğunda (QStatusBar), ayrı bir panel değil.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
@@ -496,6 +497,12 @@ class MainWindow(QMainWindow):
         self.set_status("Hazır")
 
     def add_mod(self, result: SearchResult) -> None:
+        """Mod ekleme iki aşamalı: önce uyumlu sürümler ağdan çekilir (arka
+        plan thread'i), sonra kullanıcı GUI thread'inde bir sürüm seçer
+        (bkz. _pick_mod_version — kullanıcı isteği: "kullanıcı modun eski
+        sürümlerini veya istenen sürümünü seçebilmeli", önceden hep en
+        yenisi (versions[0]) sessizce seçiliyordu). Seçimden sonra asıl
+        ekleme (+ bağımlılık çözümleme) ikinci bir arka plan görevinde olur."""
         if not self.current_pack:
             return
         pack = self.current_pack
@@ -507,18 +514,60 @@ class MainWindow(QMainWindow):
             self.set_status(f"{result.title} zaten pack'te.")
             return
 
-        async def task() -> tuple[list[tuple], list[str]]:
+        async def fetch_task() -> tuple[ModDetail, list[ModVersion]]:
             source = self._make_source(result.source.value)
             try:
                 detail = await source.get_project(result.project_id)
                 versions = await source.get_versions(
                     result.project_id, game_version=pack.minecraft, loader=pack.loader
                 )
-                if not versions:
-                    raise RuntimeError(f"{result.title}: {pack.minecraft}/{pack.loader.value} için uyumlu versiyon yok")
-                self.manager.add_mod(pack, versions[0], detail)
+                return detail, versions
+            finally:
+                await source.aclose()
 
-                deps, failed_deps = await self.manager.resolve_dependencies(pack, source, versions[0])
+        def on_fetched(data: tuple[ModDetail, list[ModVersion]]) -> None:
+            detail, versions = data
+            if not versions:
+                self._on_error(f"{result.title}: {pack.minecraft}/{pack.loader.value} için uyumlu versiyon yok")
+                return
+            chosen = self._pick_mod_version(result.title, versions)
+            if chosen is None:
+                self.set_status("Vazgeçildi.")
+                return
+            self._add_mod_version(pack, chosen, detail, result.title)
+
+        self.set_status(f"{result.title} için sürümler alınıyor...")
+        run_async(fetch_task, on_success=on_fetched, on_error=self._on_error)
+
+    def _pick_mod_version(self, title: str, versions: list[ModVersion]) -> ModVersion | None:
+        """Tek uyumlu sürüm varsa sormadan onu kullanır (gereksiz tıklama
+        istemez); birden fazla varsa kullanıcıya bir liste sunar — API zaten
+        en yeniden eskiye sıralı döndürüyor, ilk seçenek "en yeni" olarak
+        işaretlenir ama varsayılan seçili değildir kalır, kullanıcı bilerek
+        seçer."""
+        if len(versions) == 1:
+            return versions[0]
+
+        labels = []
+        for i, v in enumerate(versions):
+            mc_versions = ", ".join(v.game_versions) if v.game_versions else "?"
+            suffix = " — en yeni" if i == 0 else ""
+            labels.append(f"{v.name}  (MC {mc_versions}){suffix}")
+
+        label, ok = QInputDialog.getItem(
+            self, "Sürüm Seç", f"'{title}' için bir sürüm seçin:", labels, 0, False,
+        )
+        if not ok:
+            return None
+        return versions[labels.index(label)]
+
+    def _add_mod_version(self, pack: Pack, version: ModVersion, detail: ModDetail, title: str) -> None:
+        async def task() -> tuple[list[tuple], list[str]]:
+            source = self._make_source(version.source.value)
+            try:
+                self.manager.add_mod(pack, version, detail)
+
+                deps, failed_deps = await self.manager.resolve_dependencies(pack, source, version)
                 for dep_version in deps:
                     dep_detail = await source.get_project(dep_version.project_id)
                     self.manager.add_mod(pack, dep_version, dep_detail)
@@ -526,7 +575,7 @@ class MainWindow(QMainWindow):
                 # Zorunlu olmayan (optional) bağımlılıklar otomatik eklenmez —
                 # kullanıcıya "Önerilen Modlar" penceresinde seçtiriyoruz.
                 optional_versions = await self.manager.resolve_optional_dependencies(
-                    pack, source, versions[0]
+                    pack, source, version
                 )
                 suggestions = []
                 for opt_version in optional_versions:
@@ -536,7 +585,7 @@ class MainWindow(QMainWindow):
             finally:
                 await source.aclose()
 
-        self.set_status(f"{result.title} ekleniyor...")
+        self.set_status(f"{title} ekleniyor...")
         run_async(task, on_success=self._on_mod_added, on_error=self._on_error)
 
     def _on_mod_added(self, result: tuple[list[tuple[ModVersion, ModDetail]], list[str]]) -> None:
@@ -665,7 +714,37 @@ class MainWindow(QMainWindow):
             self._cancel_event.set()
             self.set_status("İptal ediliyor...")
 
-    def _confirm_dependencies_ok(self, pack: Pack) -> bool:
+    async def _describe_missing_dependencies(self, pack: Pack, missing: list[tuple[str, str]]) -> list[str]:
+        """Ham project_id yerine gerçek mod adını göstermek için (ör. "Prism",
+        "Architectury API" — "eXts2L7r" gibi bir ID değil) eksik
+        bağımlılıkların adlarını ağdan çözer. Kullanıcı geri bildirimi:
+        "Zorunlu mod listelerinde mod ID değil mod adı görünmeli" — bu artık
+        hem mod ekleme anında (bkz. resolve_dependencies) hem de burada
+        (elle kontrol VE export/server pack/SKLauncher öncesi sert kapı)
+        tutarlı şekilde uygulanıyor."""
+        by_mod: dict[str, list[str]] = {}
+        for mod_name, dep_id in missing:
+            by_mod.setdefault(mod_name, []).append(dep_id)
+
+        lines = []
+        for mod_name, dep_ids in by_mod.items():
+            parent = next((m for m in pack.mods if (m.name or m.file_name) == mod_name), None)
+            source_name = parent.source.value if parent else ModSourceType.MODRINTH.value
+            source = self._make_source(source_name)
+            try:
+                dep_labels = []
+                for dep_id in dep_ids:
+                    try:
+                        detail = await source.get_project(dep_id)
+                        dep_labels.append(detail.title)
+                    except Exception:  # noqa: BLE001 - isim alınamazsa id ile devam
+                        dep_labels.append(dep_id)
+                lines.append(f"• {mod_name}: {', '.join(dep_labels)}")
+            finally:
+                await source.aclose()
+        return lines
+
+    def _run_if_dependencies_ok(self, pack: Pack, on_proceed: Callable[[], None]) -> None:
         """Kullanıcı isteği: "mod kontrol kısmını sert bir şekilde kontrol
         sistemi ekleyelim" — bir pack'i Prism/CurseForge/SKLauncher'a
         aktarmadan önce, pack'teki modların kayıtlı zorunlu bağımlılıklarının
@@ -675,41 +754,39 @@ class MainWindow(QMainWindow):
         geri bildirimi: "Prism'de açılışta hata verdi, zorunlu modlar
         yüklenmemiş" — kök neden: resolve_dependencies bir bağımlılığın
         uyumlu versiyonunu bulamayınca sessizce atlıyordu, bkz. o fonksiyonun
-        güncellenmiş docstring'i). Varsayılan olarak durdurur; kullanıcı
-        bilerek "Yine de Devam Et" derse izin verir."""
+        güncellenmiş docstring'i). Sorun yoksa on_proceed() hemen çağrılır
+        (gecikme yok); varsa isimler ağdan çözülüp durdurulur, kullanıcı
+        bilerek "Yine de Devam Et" derse on_proceed() çağrılır."""
         missing = self.manager.find_missing_dependencies(pack)
         if not missing:
-            return True
+            on_proceed()
+            return
 
-        by_mod: dict[str, list[str]] = {}
-        for mod_name, dep_id in missing:
-            by_mod.setdefault(mod_name, []).append(dep_id)
-        lines = [f"• {mod}: {', '.join(deps)}" for mod, deps in by_mod.items()]
+        async def task() -> list[str]:
+            return await self._describe_missing_dependencies(pack, missing)
 
-        answer = QMessageBox.warning(
-            self,
-            "Eksik Zorunlu Bağımlılıklar",
-            "Bu pack'teki bazı modların gerektirdiği zorunlu bağımlılıklar "
-            "pack'te yok. Bu haliyle export edilirse oyun büyük ihtimalle "
-            "açılışta çökecektir:\n\n"
-            + "\n".join(lines)
-            + "\n\nYine de devam etmek istiyor musunuz?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        return answer == QMessageBox.StandardButton.Yes
+        def on_success(lines: list[str]) -> None:
+            self.set_status("Hazır")
+            answer = QMessageBox.warning(
+                self,
+                "Eksik Zorunlu Bağımlılıklar",
+                "Bu pack'teki bazı modların gerektirdiği zorunlu bağımlılıklar "
+                "pack'te yok. Bu haliyle export edilirse oyun büyük ihtimalle "
+                "açılışta çökecektir:\n\n"
+                + "\n".join(lines)
+                + "\n\nYine de devam etmek istiyor musunuz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                on_proceed()
+
+        self.set_status("Bağımlılıklar kontrol ediliyor...")
+        run_async(task, on_success=on_success, on_error=self._on_error)
 
     def check_dependencies(self) -> None:
         """Modlar bölümündeki "Bağımlılıkları Kontrol Et" butonu — export
-        beklemeden, istediği zaman elle kontrol edebilsin diye
-        (bkz. _confirm_dependencies_ok — export/server pack/SKLauncher
-        öncesi otomatik çalışan aynı kontrolün engelsiz hâli).
-
-        Ham project_id yerine gerçek mod adını göstermek için (ör. "Prism",
-        "Architectury API") eksik bağımlılıkların adlarını ağdan çözüyor —
-        bu buton anlık bir tanı aracı olduğu için kısa bir gecikme kabul
-        edilebilir (export öncesi otomatik kapıda böyle bir gecikme
-        istenmez, o yüzden _confirm_dependencies_ok çevrimdışı/id ile kalır)."""
+        beklemeden, istediği zaman elle kontrol edebilsin diye."""
         if not self.current_pack:
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
             return
@@ -724,27 +801,7 @@ class MainWindow(QMainWindow):
             return
 
         async def task() -> list[str]:
-            lines = []
-            by_mod: dict[str, list[str]] = {}
-            for mod_name, dep_id in missing:
-                by_mod.setdefault(mod_name, []).append(dep_id)
-
-            for mod_name, dep_ids in by_mod.items():
-                parent = next((m for m in pack.mods if (m.name or m.file_name) == mod_name), None)
-                source_name = parent.source.value if parent else ModSourceType.MODRINTH.value
-                source = self._make_source(source_name)
-                try:
-                    dep_labels = []
-                    for dep_id in dep_ids:
-                        try:
-                            detail = await source.get_project(dep_id)
-                            dep_labels.append(detail.title)
-                        except Exception:  # noqa: BLE001 - isim alınamazsa id ile devam
-                            dep_labels.append(dep_id)
-                    lines.append(f"• {mod_name}: {', '.join(dep_labels)}")
-                finally:
-                    await source.aclose()
-            return lines
+            return await self._describe_missing_dependencies(pack, missing)
 
         def on_success(lines: list[str]) -> None:
             self.set_status("Hazır")
@@ -763,42 +820,44 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
             return
         pack = self.current_pack
-        if not self._confirm_dependencies_ok(pack):
-            return
-        exporter_cls = _FORMAT_EXPORTERS[format_key]
 
-        output_path, _ = QFileDialog.getSaveFileName(
-            self, "Dışa Aktar", f"{pack.name}{exporter_cls.file_extension}", f"*{exporter_cls.file_extension}"
-        )
-        if not output_path:
-            return
-        source_dir = self._pick_source_dir()
-        cancel_event = self._begin_cancellable_task()
+        def proceed() -> None:
+            exporter_cls = _FORMAT_EXPORTERS[format_key]
 
-        async def task() -> Path:
-            async with make_client() as client:
-                return await exporter_cls().export(
-                    pack,
-                    source_dir=source_dir,
-                    output_path=Path(output_path),
-                    cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
-                    content_root=self.manager.content_root(pack),
-                    client=client,
-                    exclude_dirs=self.settings.excluded_override_dirs(),
-                    progress_cb=self.set_progress,
-                    cancel_event=cancel_event,
-                )
+            output_path, _ = QFileDialog.getSaveFileName(
+                self, "Dışa Aktar", f"{pack.name}{exporter_cls.file_extension}", f"*{exporter_cls.file_extension}"
+            )
+            if not output_path:
+                return
+            source_dir = self._pick_source_dir()
+            cancel_event = self._begin_cancellable_task()
 
-        def on_success(p: Path) -> None:
-            self._end_cancellable_task()
-            self.set_status(f"Tamamlandı: {p}")
+            async def task() -> Path:
+                async with make_client() as client:
+                    return await exporter_cls().export(
+                        pack,
+                        source_dir=source_dir,
+                        output_path=Path(output_path),
+                        cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
+                        content_root=self.manager.content_root(pack),
+                        client=client,
+                        exclude_dirs=self.settings.excluded_override_dirs(),
+                        progress_cb=self.set_progress,
+                        cancel_event=cancel_event,
+                    )
 
-        def on_error(message: str) -> None:
-            self._end_cancellable_task()
-            self._on_error(message)
+            def on_success(p: Path) -> None:
+                self._end_cancellable_task()
+                self.set_status(f"Tamamlandı: {p}")
 
-        self.set_status("Dışa aktarılıyor...")
-        run_async(task, on_success=on_success, on_error=on_error)
+            def on_error(message: str) -> None:
+                self._end_cancellable_task()
+                self._on_error(message)
+
+            self.set_status("Dışa aktarılıyor...")
+            run_async(task, on_success=on_success, on_error=on_error)
+
+        self._run_if_dependencies_ok(pack, proceed)
 
     def _ask_server_pack_world(self, pack: Pack) -> str | None:
         """Pack'e yüklenmiş dünya varsa kullanıcıya sorar; evet derse yüklü
@@ -844,42 +903,43 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
             return
         pack = self.current_pack
-        if not self._confirm_dependencies_ok(pack):
-            return
 
-        selected_world = self._ask_server_pack_world(pack)
+        def proceed() -> None:
+            selected_world = self._ask_server_pack_world(pack)
 
-        output_path, _ = QFileDialog.getSaveFileName(self, "Sunucu Paketi Oluştur", f"{pack.name}-server.zip", "*.zip")
-        if not output_path:
-            return
-        source_dir = self._pick_source_dir()
-        cancel_event = self._begin_cancellable_task()
+            output_path, _ = QFileDialog.getSaveFileName(self, "Sunucu Paketi Oluştur", f"{pack.name}-server.zip", "*.zip")
+            if not output_path:
+                return
+            source_dir = self._pick_source_dir()
+            cancel_event = self._begin_cancellable_task()
 
-        async def task() -> Path:
-            async with make_client() as client:
-                return await ServerPackExporter().export(
-                    pack,
-                    source_dir=source_dir,
-                    output_path=Path(output_path),
-                    cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
-                    content_root=self.manager.content_root(pack),
-                    client=client,
-                    exclude_dirs=self.settings.excluded_override_dirs(),
-                    progress_cb=self.set_progress,
-                    cancel_event=cancel_event,
-                    selected_world=selected_world,
-                )
+            async def task() -> Path:
+                async with make_client() as client:
+                    return await ServerPackExporter().export(
+                        pack,
+                        source_dir=source_dir,
+                        output_path=Path(output_path),
+                        cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
+                        content_root=self.manager.content_root(pack),
+                        client=client,
+                        exclude_dirs=self.settings.excluded_override_dirs(),
+                        progress_cb=self.set_progress,
+                        cancel_event=cancel_event,
+                        selected_world=selected_world,
+                    )
 
-        def on_success(p: Path) -> None:
-            self._end_cancellable_task()
-            self.set_status(f"Sunucu paketi hazır: {p}")
+            def on_success(p: Path) -> None:
+                self._end_cancellable_task()
+                self.set_status(f"Sunucu paketi hazır: {p}")
 
-        def on_error(message: str) -> None:
-            self._end_cancellable_task()
-            self._on_error(message)
+            def on_error(message: str) -> None:
+                self._end_cancellable_task()
+                self._on_error(message)
 
-        self.set_status("Sunucu paketi oluşturuluyor...")
-        run_async(task, on_success=on_success, on_error=on_error)
+            self.set_status("Sunucu paketi oluşturuluyor...")
+            run_async(task, on_success=on_success, on_error=on_error)
+
+        self._run_if_dependencies_ok(pack, proceed)
 
     def do_run_sklauncher(self) -> None:
         if not self.current_pack:
@@ -889,40 +949,42 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Uyarı", "Önce Ayarlar'dan SKLauncher yolunu belirleyin.")
             return
         pack = self.current_pack
-        if not self._confirm_dependencies_ok(pack):
-            return
-        source_dir = self._pick_source_dir()
-        cancel_event = self._begin_cancellable_task()
 
-        async def task() -> Path:
-            instances_dir = instances_dir_for(self.settings.sklauncher_path)
-            async with make_client() as client:
-                return await prepare_instance(
-                    pack,
-                    source_dir=source_dir,
-                    instances_dir=instances_dir,
-                    cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
-                    content_root=self.manager.content_root(pack),
-                    client=client,
-                    exclude_dirs=self.settings.excluded_override_dirs(),
-                    progress_cb=self.set_progress,
-                    cancel_event=cancel_event,
-                )
+        def proceed() -> None:
+            source_dir = self._pick_source_dir()
+            cancel_event = self._begin_cancellable_task()
 
-        def on_success(instance_dir: Path) -> None:
-            self._end_cancellable_task()
-            self.set_status(f"Instance hazır: {instance_dir} — SKLauncher başlatılıyor")
-            try:
-                launch(self.settings.sklauncher_path)
-            except Exception as exc:  # noqa: BLE001
-                self._on_error(str(exc))
+            async def task() -> Path:
+                instances_dir = instances_dir_for(self.settings.sklauncher_path)
+                async with make_client() as client:
+                    return await prepare_instance(
+                        pack,
+                        source_dir=source_dir,
+                        instances_dir=instances_dir,
+                        cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
+                        content_root=self.manager.content_root(pack),
+                        client=client,
+                        exclude_dirs=self.settings.excluded_override_dirs(),
+                        progress_cb=self.set_progress,
+                        cancel_event=cancel_event,
+                    )
 
-        def on_error(message: str) -> None:
-            self._end_cancellable_task()
-            self._on_error(message)
+            def on_success(instance_dir: Path) -> None:
+                self._end_cancellable_task()
+                self.set_status(f"Instance hazır: {instance_dir} — SKLauncher başlatılıyor")
+                try:
+                    launch(self.settings.sklauncher_path)
+                except Exception as exc:  # noqa: BLE001
+                    self._on_error(str(exc))
 
-        self.set_status("Instance hazırlanıyor...")
-        run_async(task, on_success=on_success, on_error=on_error)
+            def on_error(message: str) -> None:
+                self._end_cancellable_task()
+                self._on_error(message)
+
+            self.set_status("Instance hazırlanıyor...")
+            run_async(task, on_success=on_success, on_error=on_error)
+
+        self._run_if_dependencies_ok(pack, proceed)
 
     # -- ortak ---------------------------------------------------------------
 

@@ -17,6 +17,7 @@ MODRINTH_TAG_URL = "https://api.modrinth.com/v2/tag/game_version"
 FABRIC_LOADER_URL = "https://meta.fabricmc.net/v2/versions/loader"
 QUILT_LOADER_URL = "https://meta.quiltmc.org/v3/versions/loader"
 FORGE_MAVEN_METADATA_URL = "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml"
+FORGE_PROMOTIONS_URL = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
 NEOFORGE_VERSIONS_URL = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
 
 
@@ -113,6 +114,49 @@ async def get_neoforge_versions(client: httpx.AsyncClient, minecraft_version: st
             return (0,)
 
     return sorted(matching, key=sort_key, reverse=True)
+
+
+async def get_forge_recommended_version(client: httpx.AsyncClient, minecraft_version: str) -> str | None:
+    """Forge ekibinin promotions_slim.json'da resmen "recommended" (yoksa
+    "latest") diye işaretlediği build — Prism Launcher'daki gibi listede
+    bir yıldızla göstermek için (bkz. gui/new_pack_dialog.py). Bulunamazsa
+    (ağ hatası ya da bu MC versiyonu için hiç promo yoksa) None döner —
+    çağıran taraf bu durumda hiçbir şeyi "önerilen" işaretlemez."""
+    try:
+        data = await _get_json(client, FORGE_PROMOTIONS_URL, what="Forge önerilen versiyon")
+    except GameInfoError:
+        return None
+    promos = data.get("promos", {}) if isinstance(data, dict) else {}
+    return promos.get(f"{minecraft_version}-recommended") or promos.get(f"{minecraft_version}-latest")
+
+
+async def _stable_loader_version(client: httpx.AsyncClient, url: str, what: str) -> str | None:
+    """Fabric/Quilt loader meta API'si her sürüm için bir "stable" bayrağı
+    verir (beta/RC build'ler de listede olabilir) — ilk stable=true olanı
+    "önerilen" sayıyoruz."""
+    try:
+        data = await _get_json(client, url, what=what)
+    except GameInfoError:
+        return None
+    return next((v["version"] for v in data if v.get("stable")), None)
+
+
+async def get_recommended_loader_version(
+    client: httpx.AsyncClient, loader: Loader, minecraft_version: str
+) -> str | None:
+    """Kullanıcı isteği: "sağlayıcı paketleri oluştururken en yeni sürüm ve
+    önerilen/recommended sürüm Prism Launcher benzeri şekilde gösterilmeli."
+    Vanilla/NeoForge için ayrı bir resmi "önerilen" kavramı yok — bu
+    durumlarda None döner ve listenin zaten en başındaki (en yeni) build
+    zımnen önerilen sayılır (bkz. gui/new_pack_dialog.py etiketleme
+    mantığı)."""
+    if loader == Loader.FORGE:
+        return await get_forge_recommended_version(client, minecraft_version)
+    if loader == Loader.FABRIC:
+        return await _stable_loader_version(client, FABRIC_LOADER_URL, "Fabric loader versiyon listesi")
+    if loader == Loader.QUILT:
+        return await _stable_loader_version(client, QUILT_LOADER_URL, "Quilt loader versiyon listesi")
+    return None
 
 
 async def get_loader_versions(

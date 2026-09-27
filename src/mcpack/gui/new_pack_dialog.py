@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from mcpack.downloader import make_client
-from mcpack.gameinfo import get_loader_versions, get_minecraft_versions
+from mcpack.gameinfo import get_loader_versions, get_minecraft_versions, get_recommended_loader_version
 from mcpack.gui.theme import danger_color
 from mcpack.gui.widgets import run_async
 from mcpack.models import Loader
@@ -142,14 +142,41 @@ class NewPackDialog(QDialog):
                 self.loader_version_combo.addItem("Bulunamadı", None)
                 self._show_error(f"{mc_version} için {loader.value} versiyonu bulunamadı.")
                 return
-            for v in versions:
-                self.loader_version_combo.addItem(v, v)
+            for i, v in enumerate(versions):
+                label = f"{v}  (en yeni)" if i == 0 else v
+                self.loader_version_combo.addItem(label, v)
             self.loader_version_combo.setEnabled(True)
+            self._mark_recommended_loader_version(loader, mc_version)
 
         def on_error(message: str) -> None:
             self.loader_version_combo.clear()
             self.loader_version_combo.addItem("Yüklenemedi", None)
             self._show_error(message)
+
+        run_async(task, on_success=on_success, on_error=on_error)
+
+    def _mark_recommended_loader_version(self, loader: Loader, mc_version: str) -> None:
+        """Prism Launcher'daki gibi: listede hangisinin en yeni OLDUĞU zaten
+        yukarıda işaretlendi, burada ayrıca hangisinin sağlayıcının resmen
+        "önerilen" (kararlı) build'i olduğunu (varsa) yıldızla işaretler.
+        Salt kozmetik bir zenginleştirme olduğu için hata durumunda (ağ vb.)
+        sessizce hiçbir şey yapmaz — kullanıcının versiyon seçimini engellemez."""
+        async def task() -> str | None:
+            async with make_client() as client:
+                return await get_recommended_loader_version(client, loader, mc_version)
+
+        def on_success(recommended: str | None) -> None:
+            if not recommended:
+                return
+            for i in range(self.loader_version_combo.count()):
+                if self.loader_version_combo.itemData(i) == recommended:
+                    text = self.loader_version_combo.itemText(i)
+                    if "Önerilen" not in text:
+                        self.loader_version_combo.setItemText(i, f"{text}  ⭐ Önerilen")
+                    break
+
+        def on_error(_message: str) -> None:
+            pass
 
         run_async(task, on_success=on_success, on_error=on_error)
 

@@ -5,14 +5,18 @@ import respx
 from mcpack.gameinfo import (
     FABRIC_LOADER_URL,
     FORGE_MAVEN_METADATA_URL,
+    FORGE_PROMOTIONS_URL,
     MODRINTH_TAG_URL,
     NEOFORGE_VERSIONS_URL,
+    QUILT_LOADER_URL,
     GameInfoError,
     get_fabric_loader_versions,
+    get_forge_recommended_version,
     get_forge_versions,
     get_loader_versions,
     get_minecraft_versions,
     get_neoforge_versions,
+    get_recommended_loader_version,
 )
 from mcpack.models import Loader
 
@@ -135,6 +139,82 @@ async def test_get_neoforge_versions_filters_by_mc_version_and_sorts_desc():
             versions = await get_neoforge_versions(client, "1.21.1")
 
     assert versions == ["21.1.100", "21.1.20", "21.1.0"]
+
+
+@pytest.mark.asyncio
+async def test_get_forge_recommended_version_prefers_recommended_over_latest():
+    with respx.mock:
+        respx.get(FORGE_PROMOTIONS_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={"promos": {"1.21.1-recommended": "47.3.0", "1.21.1-latest": "47.4.0"}},
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            recommended = await get_forge_recommended_version(client, "1.21.1")
+
+    assert recommended == "47.3.0"
+
+
+@pytest.mark.asyncio
+async def test_get_forge_recommended_version_falls_back_to_latest():
+    with respx.mock:
+        respx.get(FORGE_PROMOTIONS_URL).mock(
+            return_value=httpx.Response(200, json={"promos": {"1.21.1-latest": "47.4.0"}})
+        )
+        async with httpx.AsyncClient() as client:
+            recommended = await get_forge_recommended_version(client, "1.21.1")
+
+    assert recommended == "47.4.0"
+
+
+@pytest.mark.asyncio
+async def test_get_forge_recommended_version_none_on_network_error():
+    with respx.mock:
+        respx.get(FORGE_PROMOTIONS_URL).mock(return_value=httpx.Response(500))
+        async with httpx.AsyncClient() as client:
+            recommended = await get_forge_recommended_version(client, "1.21.1")
+
+    assert recommended is None
+
+
+@pytest.mark.asyncio
+async def test_get_recommended_loader_version_fabric_picks_first_stable():
+    with respx.mock:
+        respx.get(FABRIC_LOADER_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"version": "0.17.0-beta.1", "stable": False},
+                    {"version": "0.16.5", "stable": True},
+                    {"version": "0.16.4", "stable": True},
+                ],
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            recommended = await get_recommended_loader_version(client, Loader.FABRIC, "1.21.1")
+
+    assert recommended == "0.16.5"
+
+
+@pytest.mark.asyncio
+async def test_get_recommended_loader_version_quilt_picks_first_stable():
+    with respx.mock:
+        respx.get(QUILT_LOADER_URL).mock(
+            return_value=httpx.Response(200, json=[{"version": "0.27.0", "stable": True}])
+        )
+        async with httpx.AsyncClient() as client:
+            recommended = await get_recommended_loader_version(client, Loader.QUILT, "1.21.1")
+
+    assert recommended == "0.27.0"
+
+
+@pytest.mark.asyncio
+async def test_get_recommended_loader_version_neoforge_returns_none():
+    async with httpx.AsyncClient() as client:
+        recommended = await get_recommended_loader_version(client, Loader.NEOFORGE, "1.21.1")
+
+    assert recommended is None
 
 
 @pytest.mark.asyncio

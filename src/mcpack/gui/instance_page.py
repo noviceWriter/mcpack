@@ -568,6 +568,7 @@ class InstancePage(QWidget):
     export_requested = Signal(str)
     server_pack_requested = Signal()
     run_sklauncher_requested = Signal()
+    fork_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -615,6 +616,11 @@ class InstancePage(QWidget):
         sklauncher_button = QPushButton("SKLauncher ile Çalıştır")
         sklauncher_button.clicked.connect(self.run_sklauncher_requested.emit)
         header.addWidget(sklauncher_button)
+
+        fork_button = QPushButton("Başka Sürüme Uyarla")
+        fork_button.setToolTip("Bu pack'i farklı bir Minecraft versiyonu için kopyala (fork)")
+        fork_button.clicked.connect(self.fork_requested.emit)
+        header.addWidget(fork_button)
         outer.addLayout(header)
 
         body = QHBoxLayout()

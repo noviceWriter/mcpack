@@ -40,6 +40,7 @@ mcpack-cli list
 mcpack-cli search sodium --source both --minecraft 1.21.1 --loader fabric   # Modrinth+CF birlikte, çakışanlarda tercih Settings.prefer_modrinth'e göre
 mcpack-cli add-mod <pack_id> AANobbMI --source modrinth
 mcpack-cli set-env <pack_id> <project_id> --client optional --server unsupported  # env bilgisi belirsizse elle düzelt
+mcpack-cli fork <pack_id> --minecraft 1.21.1   # pack'i başka bir MC versiyonuna uyarlar; uyumsuz modlar eklenmez, uyarı basılır
 mcpack-cli export <pack_id> mrpack --output ./out/pack.mrpack
 mcpack-cli export <pack_id> server --output ./out/pack-server.zip
 ```

@@ -27,6 +27,7 @@ from mcpack.models import (
 )
 from mcpack.packs import storage
 from mcpack.sources.base import ModDetail, ModSource, ModVersion
+from mcpack.sources.cheat_mods import CheatModUnavailableError, find_meteor_download, find_wurst_download
 
 _CONTENT_SUBDIR: dict[ContentKind, str] = {
     ContentKind.SHADERPACK: "shaderpacks",
@@ -439,3 +440,112 @@ class PackManager:
                 resolved.append(versions[0])
 
         return resolved
+
+    async def fork_pack(
+        self,
+        pack: Pack,
+        *,
+        name: str,
+        minecraft: str,
+        loader_version: str,
+        modrinth: ModSource,
+        curseforge: ModSource | None,
+        http_client: httpx.AsyncClient,
+    ) -> tuple[Pack, list[str]]:
+        """pack'i FARKLI bir Minecraft versiyonuna (üst ya da alt sürüm, fark
+        etmez) uyarlayan yeni, bağımsız bir pack oluşturur ("fork" —
+        kullanıcı isteği: "bir mod paketini üst/alt minecraft sürümlerine
+        uyarlama; modun uygun sürümü yoksa kullanıcıya bilgi verir, modu
+        eklemez").
+
+        pack.mods'taki HER mod için kendi kaynağında (Modrinth/CurseForge/
+        Wurst/Meteor) yeni minecraft versiyonuna uygun bir versiyon aranır;
+        bulunamazsa (ya da CurseForge API anahtarı yoksa) mod YENİ pack'e
+        SESSİZCE eklenmez — sadece adı döndürülen listeye eklenir, çağıran
+        taraf (GUI/CLI) bunu kullanıcıya göstersin diye (bkz.
+        resolve_dependencies'teki aynı prensip). content_downloads (shader/
+        resourcepack/datapack) için de aynı mantık uygulanır; yerel içerik
+        (content — ör. dünyalar) Minecraft versiyonundan bağımsız olduğu için
+        doğrudan kopyalanır.
+
+        Loader TÜRÜ değişmez, sadece MC versiyonu değişir — loader_version
+        çağıran tarafça yeni MC versiyonu için ayrıca sorulur/çözülür (bkz.
+        gameinfo.get_loader_versions, gui/fork_pack_dialog.py).
+
+        Not: pack.mods'ta zaten düz bir liste olarak duran zorunlu
+        bağımlılıklar da normal mod gibi tek tek yeniden çözülür — version
+        bump'ın tamamen YENİ bir bağımlılık getirmesi burada yakalanmaz, ama
+        export/server pack/SKLauncher öncesi sert kontrol
+        (find_missing_dependencies) bunu zaten ayrıca yakalar."""
+        new_pack = self.create_pack(
+            name=name,
+            minecraft=minecraft,
+            loader=pack.loader,
+            loader_version=loader_version,
+            author=pack.author,
+            summary=pack.summary,
+        )
+
+        failed: list[str] = []
+
+        def _source_for(source_type: ModSourceType) -> ModSource | None:
+            if source_type == ModSourceType.MODRINTH:
+                return modrinth
+            if source_type == ModSourceType.CURSEFORGE:
+                return curseforge
+            return None
+
+        for mod in pack.mods:
+            label = mod.name or mod.file_name
+            if mod.source in (ModSourceType.WURST, ModSourceType.METEOR):
+                try:
+                    if mod.source == ModSourceType.WURST:
+                        file_name, url = await find_wurst_download(http_client, minecraft)
+                    else:
+                        file_name, url = await find_meteor_download(http_client, minecraft)
+                except CheatModUnavailableError:
+                    failed.append(label)
+                    continue
+                self.add_cheat_mod(new_pack, mod.source, file_name, url)
+                continue
+
+            source = _source_for(mod.source)
+            if source is None:
+                failed.append(label)
+                continue
+            versions = await source.get_versions(
+                mod.project_id, game_version=minecraft, loader=new_pack.loader
+            )
+            if not versions:
+                failed.append(label)
+                continue
+            detail: ModDetail | None = None
+            try:
+                detail = await source.get_project(mod.project_id)
+            except Exception:  # noqa: BLE001 - detay alınamazsa isimsiz eklenir
+                pass
+            self.add_mod(new_pack, versions[0], detail)
+
+        for cd in pack.content_downloads:
+            label = cd.name or cd.file_name
+            source = _source_for(cd.source)
+            if source is None:
+                failed.append(label)
+                continue
+            versions = await source.get_versions(cd.project_id, game_version=minecraft)
+            if not versions:
+                failed.append(label)
+                continue
+            detail = None
+            try:
+                detail = await source.get_project(cd.project_id)
+            except Exception:  # noqa: BLE001
+                pass
+            self.add_content_download(new_pack, cd.kind, versions[0], detail)
+
+        for entry in pack.content:
+            src_path = self.content_root(pack) / entry.stored_path
+            if src_path.exists():
+                self.add_content(new_pack, entry.kind, src_path, display_name=entry.name)
+
+        return new_pack, failed

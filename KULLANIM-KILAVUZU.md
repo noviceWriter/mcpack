@@ -106,6 +106,19 @@ klasördür (varsa). Yoksa boş bir klasör seçip geçebilirsiniz.
 **Sunucu Paketi** butonu, pack'inizden sunucuda çalışmayan (istemci-only)
 modları otomatik eleyerek bir sunucu kurulumu üretir.
 
+Gerçek sunucu çalıştırılabilir dosyası da artık **otomatik indirilip pakete
+eklenir** — ayrıca bir siteye gidip indirmenize gerek yok:
+- **Vanilla/Fabric/Quilt:** hazır, çalıştırılabilir `server.jar` doğrudan
+  pakete konur; `start.sh`/`start.bat` ile direkt başlatabilirsiniz.
+- **Forge/NeoForge:** resmi olarak sadece bir *kurulum programı*
+  (installer) yayınlanıyor; bu installer indirilip pakete eklenir, ama
+  kurulumu (`java -jar <installer> --installServer`) bir kerelik elle
+  yapmanız gerekir — `start.sh`/`start.bat` içinde tam komut yazılı.
+- Nadir bir durumda (ağ hatası ya da o Minecraft versiyonu için resmi bir
+  dosya hiç yayınlanmamışsa) otomatik indirme başarısız olursa export
+  BOZULMAZ — pakete `SUNUCU_DOSYASI_INDIRILEMEDI.txt` eklenir ve program
+  size bunu hemen bir uyarı penceresiyle bildirir.
+
 ### 4.2 Dünya Ekleme Notu
 Pack'inize bir dünya yüklediyseniz, sunucu paketi oluştururken program size
 **"Bu pack'e yüklenmiş dünya var, sunucu paketine eklemek ister misiniz?"**

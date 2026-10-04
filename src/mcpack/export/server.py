@@ -16,6 +16,13 @@ from pathlib import Path
 
 import httpx
 
+from mcpack.downloader import (
+    DownloadCancelledError,
+    DownloadError,
+    HashMismatchError,
+    download_file,
+    verify_hashes,
+)
 from mcpack.export.base import (
     EXCLUDED_OVERRIDE_DIR_NAMES,
     Exporter,
@@ -28,6 +35,7 @@ from mcpack.export.base import (
 )
 from mcpack.known_mods import load_known_client_only_slugs
 from mcpack.models import ContentKind, ModEntry, ModSourceType, Pack
+from mcpack.server_jar import ServerDownload, ServerDownloadError, get_server_download
 
 
 def is_server_compatible(entry: ModEntry, known_client_only_slugs: set[str] | None = None) -> bool:
@@ -56,15 +64,77 @@ def filter_server_mods(pack: Pack, known_client_only_slugs: set[str] | None = No
     return [m for m in pack.mods if is_server_compatible(m, known)]
 
 
-_START_SH = """#!/usr/bin/env bash
+async def _ensure_server_file_downloaded(
+    download: ServerDownload,
+    cache_dir: Path,
+    client: httpx.AsyncClient,
+    *,
+    cancel_event=None,
+) -> Path:
+    """ensure_mods_downloaded'daki aynı önbellekleme deseni: dosya zaten
+    cache_dir'de ve (varsa) hash'i tutuyorsa tekrar indirilmez. Fabric/Quilt/
+    Forge/NeoForge'ta resmi API hash vermediği için (sha1=None) bu durumlarda
+    sadece "dosya zaten var mı" kontrol edilir — export'u her çalıştırışta
+    aynı sunucu dosyasını tekrar tekrar indirmemek için."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    dest = cache_dir / download.file_name
+    if dest.exists():
+        if not download.sha1:
+            return dest
+        try:
+            verify_hashes(dest, sha1=download.sha1)
+            return dest
+        except HashMismatchError:
+            dest.unlink(missing_ok=True)
+
+    await download_file(client, download.url, dest, sha1=download.sha1, cancel_event=cancel_event)
+    return dest
+
+
+_START_SH_READY = """#!/usr/bin/env bash
 # Basit sunucu başlatma script'i - Java yolunu/argümanlarını ihtiyaca göre düzenleyin.
 java -Xmx4G -Xms2G -jar server.jar nogui
 """
 
-_START_BAT = """@echo off
+_START_BAT_READY = """@echo off
 REM Basit sunucu baslatma script'i - Java yolunu/argumanlarini ihtiyaca gore duzenleyin.
 java -Xmx4G -Xms2G -jar server.jar nogui
 pause
+"""
+
+_START_SH_INSTALLER = """#!/usr/bin/env bash
+# Bu loader (Forge/NeoForge) hazır bir server.jar değil, bir KURULUM
+# PROGRAMI sunuyor. İlk çalıştırmada önce kurulumu yapın:
+#   java -jar {installer_name} --installServer
+# Kurulum bitince oluşan run.sh (ya da üretilen sunucu jar'ı) ile başlatın:
+#   ./run.sh nogui
+echo "Once calistirin: java -jar {installer_name} --installServer"
+echo "Sonra olusan run.sh ile baslatin: ./run.sh nogui"
+"""
+
+_START_BAT_INSTALLER = """@echo off
+REM Bu loader (Forge/NeoForge) hazir bir server.jar degil, bir KURULUM
+REM PROGRAMI sunuyor. Once kurulumu yapin:
+REM   java -jar {installer_name} --installServer
+REM Kurulum bitince olusan run.bat ile baslatin.
+echo Once calistirin: java -jar {installer_name} --installServer
+echo Sonra olusan run.bat ile baslatin.
+pause
+"""
+
+SERVER_FILE_MISSING_NOTICE_NAME = "SUNUCU_DOSYASI_INDIRILEMEDI.txt"
+"""Export sonrası GUI'nin (bkz. gui/main_window.py:do_server_pack) zip'i
+tekrar açıp bu dosyanın var olup olmadığına bakarak kullanıcıyı anında
+uyarabilmesi için adı burada sabit — iki yerde aynı literal string'i
+tekrarlamamak için."""
+
+_SERVER_FILE_MISSING_NOTICE = """Sunucu dosyasi otomatik indirilemedi: {reason}
+
+Elle indirmeniz gerekiyor:
+- Pack: Minecraft {minecraft} / {loader} {loader_version}
+- Resmi kaynaktan uygun sunucu dosyasini (ya da Forge/NeoForge icin
+  installer'i) bulup bu klasore "server.jar" olarak koyun, sonra start.sh/
+  start.bat'i calistirin.
 """
 
 
@@ -72,8 +142,15 @@ class ServerPackExporter(Exporter):
     format_name = "Server Pack"
     file_extension = ".zip"
 
-    def __init__(self, *, include_start_scripts: bool = True) -> None:
+    def __init__(self, *, include_start_scripts: bool = True, download_server_file: bool = True) -> None:
         self.include_start_scripts = include_start_scripts
+        self.download_server_file = download_server_file
+        """Kullanıcı isteği: "server dosyasını kullanıcı indirsin mi yoksa
+        biz indirtebilir miyiz?" — açıksa (varsayılan) resmi API'lerden
+        pack.minecraft/loader'a uygun GERÇEK sunucu dosyası bulunup pakete
+        gömülür (bkz. mcpack.server_jar). Testler, bu davranışı ayrıca test
+        eden tests/test_server_jar.py dışında ağ çağrısı yapmamak için
+        False geçebilir."""
 
     async def export(
         self,
@@ -114,10 +191,47 @@ class ServerPackExporter(Exporter):
         if selected_world is not None:
             override_files += collect_world_files(pack, content_root, selected_world=selected_world)
 
+        server_download: ServerDownload | None = None
+        server_download_error: str | None = None
+        if self.download_server_file:
+            try:
+                server_download = await get_server_download(
+                    client, pack.loader, pack.minecraft, pack.loader_version
+                )
+                dest = await _ensure_server_file_downloaded(
+                    server_download, cache_dir, client, cancel_event=cancel_event
+                )
+                override_files.append((dest, server_download.file_name))
+            except DownloadCancelledError:
+                raise  # kullanıcı export'u iptal etti, normal akış devam etsin
+            except (ServerDownloadError, DownloadError, httpx.HTTPError) as exc:
+                # Ağ hatası/bu MC-loader kombinasyonu için resmi dosya yok —
+                # export'u BOZMA, sadece kullanıcıyı not dosyasıyla bilgilendir.
+                server_download_error = str(exc)
+                server_download = None
+
         manifest_entries: list[tuple[str, str | bytes]] = []
         if self.include_start_scripts:
-            manifest_entries.append(("start.sh", _START_SH))
-            manifest_entries.append(("start.bat", _START_BAT))
+            if server_download is not None and server_download.is_installer:
+                manifest_entries.append(
+                    ("start.sh", _START_SH_INSTALLER.format(installer_name=server_download.file_name))
+                )
+                manifest_entries.append(
+                    ("start.bat", _START_BAT_INSTALLER.format(installer_name=server_download.file_name))
+                )
+            else:
+                manifest_entries.append(("start.sh", _START_SH_READY))
+                manifest_entries.append(("start.bat", _START_BAT_READY))
+                if self.download_server_file and server_download is None:
+                    manifest_entries.append((
+                        SERVER_FILE_MISSING_NOTICE_NAME,
+                        _SERVER_FILE_MISSING_NOTICE.format(
+                            reason=server_download_error or "bilinmeyen hata",
+                            minecraft=pack.minecraft,
+                            loader=pack.loader.value,
+                            loader_version=pack.loader_version,
+                        ),
+                    ))
 
         return write_zip(
             output_path,

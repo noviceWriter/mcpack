@@ -410,7 +410,9 @@ async def test_server_pack_includes_selected_world_and_datapacks_excludes_shader
             return_value=httpx.Response(200, content=b"fake-dp-bytes")
         )
         async with httpx.AsyncClient() as client:
-            await ServerPackExporter().export(
+            # Bu test dünya/datapack yerleşimine bakıyor, sunucu dosyası
+            # otomatik indirmeyi (bkz. tests/test_server_jar.py) değil.
+            await ServerPackExporter(download_server_file=False).export(
                 pack,
                 source_dir=source_dir,
                 output_path=output_path,
@@ -445,7 +447,9 @@ async def test_server_pack_without_selected_world_has_no_world_folder(tmp_path: 
     output_path = tmp_path / "server.zip"
 
     async with httpx.AsyncClient() as client:
-        await ServerPackExporter().export(
+        # Bu test dünya yerleşimine bakıyor, sunucu dosyası otomatik
+        # indirmeyi (bkz. tests/test_server_jar.py) değil.
+        await ServerPackExporter(download_server_file=False).export(
             pack,
             source_dir=source_dir,
             output_path=output_path,

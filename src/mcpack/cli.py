@@ -8,6 +8,7 @@ için kullanılır (proje-amacı.md §8, adım 7).
     mcpack-cli list
     mcpack-cli search sodium --minecraft 1.21.1 --loader fabric
     mcpack-cli add-mod <pack_id> AANobbMI --minecraft 1.21.1 --loader fabric
+    mcpack-cli fork <pack_id> --minecraft 1.21.1
     mcpack-cli export <pack_id> mrpack --output ./out/pack.mrpack
 """
 
@@ -138,6 +139,33 @@ async def cmd_add_mod(args: argparse.Namespace, settings: Settings) -> None:
         await source.aclose()
 
 
+async def cmd_fork(args: argparse.Namespace, settings: Settings) -> None:
+    manager = _manager(settings)
+    pack = manager.load(args.pack_id)
+
+    modrinth = ModrinthClient()
+    curseforge = CurseForgeClient(settings.curseforge_api_key) if settings.curseforge_api_key else None
+    try:
+        async with make_client() as http_client:
+            new_pack, failed = await manager.fork_pack(
+                pack,
+                name=args.name or f"{pack.name} (Fork)",
+                minecraft=args.minecraft,
+                loader_version=args.loader_version or pack.loader_version,
+                modrinth=modrinth,
+                curseforge=curseforge,
+                http_client=http_client,
+            )
+    finally:
+        await modrinth.aclose()
+        if curseforge:
+            await curseforge.aclose()
+
+    print(f"Fork oluşturuldu: {new_pack.id}  ({new_pack.name})  {len(new_pack.mods)} mod eklendi")
+    for name in failed:
+        print(f"  ! UYARI: uyumlu versiyon bulunamadığı için eklenmedi: {name}", file=sys.stderr)
+
+
 async def cmd_set_env(args: argparse.Namespace, settings: Settings) -> None:
     manager = _manager(settings)
     pack = manager.load(args.pack_id)
@@ -210,6 +238,17 @@ def build_parser() -> argparse.ArgumentParser:
         default="modrinth",
     )
     p.set_defaults(func=cmd_add_mod)
+
+    p = sub.add_parser(
+        "fork",
+        help="Pack'i başka bir Minecraft versiyonuna uyarlayan yeni bir pack oluştur "
+        "(uyumlu versiyonu olmayan modlar eklenmez, uyarı basılır)",
+    )
+    p.add_argument("pack_id")
+    p.add_argument("--minecraft", required=True, help="Hedef Minecraft versiyonu")
+    p.add_argument("--name", help="Varsayılan: '<orijinal ad> (Fork)'")
+    p.add_argument("--loader-version", help="Varsayılan: orijinal pack'in loader versiyonu")
+    p.set_defaults(func=cmd_fork)
 
     p = sub.add_parser(
         "set-env", help="Bir modun client/server durumunu elle düzelt (CF modları için gerekebilir)"

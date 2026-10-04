@@ -14,6 +14,7 @@ durum mesajları alt durum çubuğunda (QStatusBar), ayrı bir panel değil.
 from __future__ import annotations
 
 import threading
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -37,6 +38,8 @@ from PySide6.QtWidgets import (
 from mcpack.config import Settings
 from mcpack.downloader import make_client
 from mcpack.export import CurseForgeExporter, MrpackExporter, PrismExporter, ServerPackExporter
+from mcpack.export.server import SERVER_FILE_MISSING_NOTICE_NAME
+from mcpack.gui.fork_pack_dialog import ForkPackDialog
 from mcpack.gui.instance_page import InstancePage
 from mcpack.gui.library_page import LibraryPage
 from mcpack.gui.mod_search_dialog import ModSearchDialog
@@ -152,6 +155,7 @@ class MainWindow(QMainWindow):
         self.instance_page.export_requested.connect(self.do_export)
         self.instance_page.server_pack_requested.connect(self.do_server_pack)
         self.instance_page.run_sklauncher_requested.connect(self.do_run_sklauncher)
+        self.instance_page.fork_requested.connect(self.do_fork_pack)
 
         mods = self.instance_page.mods_section
         mods.remove_mod_requested.connect(self.remove_mod)
@@ -246,6 +250,62 @@ class MainWindow(QMainWindow):
             summary=values["summary"],
         )
         self.reload_packs()
+
+    def do_fork_pack(self) -> None:
+        """Mevcut pack'i farklı bir Minecraft versiyonu için kopyalar ("fork"
+        — kullanıcı isteği: "modun uygun sürümü yoksa kullanıcıya bilgi
+        verir, modu eklemez"). Asıl çözümleme (her mod için ağdan yeni
+        versiyon arama) PackManager.fork_pack'te; burada sadece diyalog +
+        arka plan görevi + sonuç özeti var (add_mod'daki aynı iki aşamalı
+        desen: diyalogdaki alanlar GUI thread'inde, ağ işi arka planda)."""
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+        dialog = ForkPackDialog(pack, self)
+        if dialog.exec() != ForkPackDialog.DialogCode.Accepted:
+            return
+        values = dialog.result_values()
+
+        async def task() -> tuple[Pack, list[str]]:
+            modrinth = ModrinthClient()
+            curseforge = (
+                CurseForgeClient(self.settings.curseforge_api_key)
+                if self.settings.curseforge_api_key
+                else None
+            )
+            try:
+                async with make_client() as http_client:
+                    return await self.manager.fork_pack(
+                        pack,
+                        name=values["name"],
+                        minecraft=values["minecraft"],
+                        loader_version=values["loader_version"],
+                        modrinth=modrinth,
+                        curseforge=curseforge,
+                        http_client=http_client,
+                    )
+            finally:
+                await modrinth.aclose()
+                if curseforge:
+                    await curseforge.aclose()
+
+        def on_success(result: tuple[Pack, list[str]]) -> None:
+            new_pack, failed = result
+            self.reload_packs()
+            self.set_status(f"'{new_pack.name}' oluşturuldu.")
+            if failed:
+                QMessageBox.warning(
+                    self,
+                    "Bazı Modlar Atlandı",
+                    f"'{new_pack.name}' pack'i oluşturuldu, ama Minecraft {new_pack.minecraft} "
+                    "için uyumlu bir versiyonu bulunamadığından şu modlar YENİ pack'e "
+                    "EKLENMEDİ:\n\n"
+                    + "\n".join(f"• {name}" for name in failed)
+                    + "\n\nBunları elle eklemeyi veya alternatif bir mod aramayı deneyin.",
+                )
+
+        self.set_status(f"'{pack.name}' Minecraft {values['minecraft']}'e uyarlanıyor...")
+        run_async(task, on_success=on_success, on_error=self._on_error)
 
     def remove_mod(self, project_id: str) -> None:
         if not self.current_pack:
@@ -970,6 +1030,7 @@ class MainWindow(QMainWindow):
             def on_success(p: Path) -> None:
                 self._end_cancellable_task()
                 self.set_status(f"Sunucu paketi hazır: {p}")
+                self._warn_if_server_file_missing(p)
 
             def on_error(message: str) -> None:
                 self._end_cancellable_task()
@@ -979,6 +1040,31 @@ class MainWindow(QMainWindow):
             run_async(task, on_success=on_success, on_error=on_error)
 
         self._run_if_dependencies_ok(pack, proceed)
+
+    def _warn_if_server_file_missing(self, server_pack_path: Path) -> None:
+        """Kullanıcı isteği: "server dosyasını biz indirtebilir miyiz" —
+        ServerPackExporter artık bunu otomatik yapıyor, ama bu MC/loader
+        kombinasyonu için resmi bir dosya bulunamadıysa (ağ hatası ya da
+        gerçekten yayınlanmamışsa) ServerPackExporter export'u BOZMADAN bir
+        not dosyası ekliyor (bkz. export/server.py). Burada export BİTTİKTEN
+        sonra zip'e tekrar bakıp bu durumu kullanıcıya HEMEN göstererek
+        "neden sunucu çalışmıyor" sorusunu önceden yanıtlıyoruz."""
+        try:
+            with zipfile.ZipFile(server_pack_path) as zf:
+                has_notice = SERVER_FILE_MISSING_NOTICE_NAME in zf.namelist()
+        except OSError:
+            return
+        if not has_notice:
+            return
+        QMessageBox.warning(
+            self,
+            "Sunucu Dosyası Otomatik İndirilemedi",
+            "Sunucu paketi oluşturuldu, ama bu Minecraft/loader kombinasyonu için "
+            "resmi sunucu dosyası otomatik bulunup indirilemedi (ağ hatası ya da "
+            "bu versiyon için resmi bir dosya yayınlanmamış olabilir).\n\n"
+            f"Zip içindeki '{SERVER_FILE_MISSING_NOTICE_NAME}' dosyasında detay ve "
+            "elle indirme talimatı var.",
+        )
 
     def do_run_sklauncher(self) -> None:
         if not self.current_pack:

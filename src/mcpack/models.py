@@ -126,6 +126,27 @@ class ContentEntry(BaseModel):
     is_dir: bool = False
 
 
+class ServerRuntimeConfig(BaseModel):
+    """Yerel sunucu çalıştırma ayarları (bkz. server_runtime.py,
+    gui/server_section.py). Port/zorluk/motd gibi Minecraft'ın kendi
+    kavramları BURADA TEKRARLANMAZ — tek doğruluk kaynağı server.properties
+    dosyasının kendisidir (bkz. server_properties.py); burada sadece
+    server.properties'te karşılığı olmayan, mcpack'e özgü ayarlar tutulur."""
+
+    memory_mb: int = 2048
+    selected_world: str | None = None
+    """pack.content'teki (ContentKind.WORLD) bir ContentEntry.name — sunucu
+    hazırlanırken server_root/world/ altına kopyalanacak dünya."""
+    eula_accepted: bool = False
+    """SADECE kullanıcı GUI'de EULA onay penceresinde açıkça kabul edince
+    True olur — bu alan True olmadan eula.txt asla yazılmaz."""
+    use_optimized_flags: bool = False
+    """Açıksa başlatma komutuna topluluğun bilinen "Aikar's flags" G1GC
+    JVM bayrakları eklenir (bkz. server_runtime.build_launch_command) —
+    Minecraft sunucusunun GC duraklamalarını azaltmak için, yıllardır
+    bilinen/belgeli bir bayrak seti, bu projeye özgü değil."""
+
+
 class Pack(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
@@ -142,6 +163,7 @@ class Pack(BaseModel):
     """Modrinth/CurseForge'tan aranıp eklenmiş shader/resourcepack/datapack."""
     content: list[ContentEntry] = Field(default_factory=list)
     """Yerelden yüklenmiş dünya(lar) (bkz. ContentKind.WORLD)."""
+    server: ServerRuntimeConfig = Field(default_factory=ServerRuntimeConfig)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

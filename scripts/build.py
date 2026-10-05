@@ -29,6 +29,8 @@ def main() -> None:
             "--windowed",
             "--add-data",
             f"{ROOT / 'data'}{';' if sys.platform == 'win32' else ':'}data",
+            "--add-data",
+            f"{ROOT / 'src' / 'mcpack' / 'assets'}{';' if sys.platform == 'win32' else ':'}assets",
             str(ROOT / "src" / "mcpack" / "main.py"),
         ],
         cwd=ROOT,

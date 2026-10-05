@@ -13,13 +13,14 @@ durum mesajları alt durum çubuğunda (QStatusBar), ayrı bir panel değil.
 
 from __future__ import annotations
 
+import re
 import threading
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -51,6 +52,29 @@ from mcpack.gui.widgets import run_async
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
 from mcpack.models import ContentKind, EnvRequirement, ModSourceType, Pack
 from mcpack.packs import PackManager
+from mcpack.server_properties import merged_with_defaults, read_properties, write_properties
+from mcpack.server_runtime import (
+    ServerProcess,
+    ServerRuntimeError,
+    build_launch_command,
+    damage_command,
+    ender_chest_query_command,
+    feed_command,
+    find_installer_jar,
+    find_java,
+    get_java_major_version,
+    heal_command,
+    hunger_command,
+    inventory_query_command,
+    kill_command,
+    list_players_command,
+    parse_item_list_response,
+    parse_list_response,
+    prepare_server,
+    required_java_major,
+    run_installer,
+    server_state,
+)
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
 from mcpack.sources.base import ModDetail, ModVersion, SearchResult
 from mcpack.sources.cheat_mods import find_meteor_download, find_wurst_download
@@ -74,6 +98,19 @@ class MainWindow(QMainWindow):
         self.current_pack: Pack | None = None
         self._cancel_event: threading.Event | None = None
         self._mod_search_dialog: ModSearchDialog | None = None
+        self._server_processes: dict[str, ServerProcess] = {}
+        """pack.id -> ServerProcess — sayfa Kütüphane↔Instance arası geçince
+        de süreç canlı kalsın diye burada, MainWindow'da tutulur (bkz.
+        _refresh_server_section, closeEvent)."""
+        self._player_poll_timer = QTimer(self)
+        """Oyuncu paneli için periyodik /list sorgusu — SADECE şu an açık
+        pack'in sunucusu çalışıyorken tetiklenir (bkz. _poll_players),
+        gereksiz arkaplan iş olmasın diye (proje isteği: "programımız
+        optimize olmalı")."""
+        self._player_poll_timer.setInterval(4000)
+        self._player_poll_timer.timeout.connect(self._poll_players)
+        self._player_poll_timer.start()
+        self._polling_players = False
 
         self.library_page = LibraryPage()
         self.instance_page = InstancePage()
@@ -176,6 +213,26 @@ class MainWindow(QMainWindow):
         cheat_mods.add_requested.connect(self.add_cheat_mod)
         cheat_mods.remove_requested.connect(self.remove_cheat_mod)
 
+        server = self.instance_page.server_section
+        server.prepare_requested.connect(self.do_server_prepare)
+        server.install_requested.connect(self.do_server_install)
+        server.start_requested.connect(self.do_server_start)
+        server.stop_requested.connect(self.do_server_stop)
+        server.command_requested.connect(self.do_server_send_command)
+        server.eula_accepted_requested.connect(self.do_server_eula_accept)
+        server.settings_changed.connect(self.do_server_settings_changed)
+        server.properties_saved.connect(self.do_server_properties_saved)
+
+        players = server.player_panel
+        players.refresh_requested.connect(self._poll_players)
+        players.heal_requested.connect(self.do_player_heal)
+        players.kill_requested.connect(self.do_player_kill)
+        players.damage_requested.connect(self.do_player_damage)
+        players.feed_requested.connect(self.do_player_feed)
+        players.hunger_requested.connect(self.do_player_hunger)
+        players.inventory_requested.connect(self.do_player_inventory)
+        players.ender_chest_requested.connect(self.do_player_ender_chest)
+
     # -- durum çubuğu ---------------------------------------------------------
 
     def set_status(self, text: str) -> None:
@@ -207,6 +264,7 @@ class MainWindow(QMainWindow):
     def open_pack(self, pack_id: str) -> None:
         self.current_pack = self.manager.load(pack_id)
         self.instance_page.show_pack(self.current_pack)
+        self._refresh_server_section()
         self.pages.setCurrentWidget(self.instance_page)
 
     def show_library(self) -> None:
@@ -306,6 +364,364 @@ class MainWindow(QMainWindow):
 
         self.set_status(f"'{pack.name}' Minecraft {values['minecraft']}'e uyarlanıyor...")
         run_async(task, on_success=on_success, on_error=self._on_error)
+
+    # -- sunucu yönetimi (başlat/durdur/konsol) ------------------------------
+
+    def _refresh_server_section(self) -> None:
+        """ServerSection'ın Pack'ten gelmeyen (dosya sistemi + canlı süreç)
+        durumunu günceller — show_pack sadece pack.server'daki (bellek/dünya/
+        EULA) ayarları yansıtır, burası "hazır mı/çalışıyor mu/konsolda ne
+        var" kısmını tamamlar."""
+        if self.current_pack is None:
+            return
+        pack = self.current_pack
+        section = self.instance_page.server_section
+        root = self.manager.server_root(pack)
+        section.set_state(server_state(root))
+
+        process = self._server_processes.get(pack.id)
+        running = process is not None and process.is_running
+        section.set_running(running)
+        if process is not None:
+            section.set_console_lines(list(process.buffer))
+        else:
+            section.clear_console()
+
+        values = merged_with_defaults(read_properties(root / "server.properties"))
+        section.set_properties(values)
+
+    def do_server_prepare(self) -> None:
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+        server_root = self.manager.server_root(pack)
+
+        async def task() -> None:
+            async with make_client() as client:
+                await prepare_server(
+                    pack,
+                    server_root=server_root,
+                    cache_dir=self.settings.resolved_packs_dir() / ".cache" / pack.id,
+                    content_root=self.manager.content_root(pack),
+                    client=client,
+                    progress_cb=self.set_progress,
+                )
+
+        def on_success(_result: None) -> None:
+            self.set_status("Sunucu hazırlandı.")
+            self._refresh_server_section()
+
+        def on_error(message: str) -> None:
+            self._on_error(message)
+            self._refresh_server_section()
+
+        self.set_status("Sunucu hazırlanıyor (mod + sunucu dosyası indiriliyor)...")
+        run_async(task, on_success=on_success, on_error=on_error)
+
+    def do_server_install(self) -> None:
+        """Forge/NeoForge: sadece bir installer var, önce bunu çalıştırmak
+        gerekiyor (bkz. server_jar.py — kullanıcı isteği "sadece indirme"
+        ile sınırlıydı, şimdi tam sunucu yönetimiyle birlikte bu adım da
+        otomatikleşti)."""
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+        server_root = self.manager.server_root(pack)
+        installer = find_installer_jar(server_root)
+        if installer is None:
+            self._on_error("Kurulum dosyası bulunamadı — önce 'Hazırla'yı çalıştırın.")
+            return
+        java_path = find_java(self.settings.java_path)
+        if java_path is None:
+            self._on_error("Java bulunamadı. Ayarlar'dan Java yolunu belirtin ya da PATH'e (java) ekleyin.")
+            return
+
+        async def task() -> list[str]:
+            return await run_installer(installer, server_root, java_path)
+
+        def on_success(lines: list[str]) -> None:
+            self.instance_page.server_section.set_console_lines(lines)
+            self.set_status("Kurulum tamamlandı.")
+            self._refresh_server_section()
+
+        def on_error(message: str) -> None:
+            self._on_error(message)
+            self._refresh_server_section()
+
+        self.set_status("Kuruluyor (java -jar ... --installServer)... bu biraz sürebilir.")
+        run_async(task, on_success=on_success, on_error=on_error)
+
+    def do_server_eula_accept(self) -> None:
+        if not self.current_pack:
+            return
+        self.manager.update_server_config(self.current_pack, eula_accepted=True)
+
+    def do_server_settings_changed(
+        self, memory_mb: int, selected_world: object, use_optimized_flags: bool
+    ) -> None:
+        if not self.current_pack:
+            return
+        self.manager.update_server_config(
+            self.current_pack,
+            memory_mb=memory_mb,
+            selected_world=selected_world,
+            use_optimized_flags=use_optimized_flags,
+        )
+
+    def do_server_properties_saved(self, values: dict) -> None:
+        if not self.current_pack:
+            return
+        properties_path = self.manager.server_root(self.current_pack) / "server.properties"
+        # Var olan (sunucunun kendi ilk açılışta ürettiği, burada hiç
+        # gösterilmeyen onlarca) anahtarı KORUYARAK sadece bilinen alanları
+        # günceller — tam dosyayı sadece bu ~10 alanla EZMEK diğer tüm
+        # ayarları (spawn-protection, resource-pack vb.) silerdi.
+        current = read_properties(properties_path)
+        current.update(values)
+        write_properties(properties_path, current)
+        self.set_status("server.properties kaydedildi.")
+
+    def do_server_start(self) -> None:
+        if not self.current_pack:
+            return
+        pack = self.current_pack
+        if not pack.server.eula_accepted:
+            # ServerSection zaten Başlat'tan önce onay penceresi gösterip
+            # eula_accepted_requested'ı emit ediyor — bu sadece bir ek
+            # güvence (proje genelindeki "UI'den bağımsız sert kontrol"
+            # deseni, bkz. find_missing_dependencies).
+            self._on_error("EULA kabul edilmeden sunucu başlatılamaz.")
+            return
+
+        server_root = self.manager.server_root(pack)
+        if server_state(server_root) != "ready":
+            self._on_error("Sunucu çalıştırmaya hazır değil — önce 'Hazırla' (ve gerekiyorsa 'Kur') yapın.")
+            return
+
+        java_path = find_java(self.settings.java_path)
+        if java_path is None:
+            self._on_error("Java bulunamadı. Ayarlar'dan Java yolunu belirtin ya da PATH'e (java) ekleyin.")
+            return
+
+        try:
+            cmd = build_launch_command(
+                server_root, pack.server.memory_mb, optimized=pack.server.use_optimized_flags
+            )
+        except ServerRuntimeError as exc:
+            self._on_error(str(exc))
+            return
+        if cmd[0] == "java":
+            cmd[0] = java_path
+
+        # eula.txt SADECE burada, kullanıcı gerçekten kabul ettiği için yazılır.
+        (server_root / "eula.txt").write_text("eula=true\n", encoding="utf-8")
+
+        process = ServerProcess()
+        # QueuedConnection AÇIKÇA belirtilir: output_line/process_exited arka
+        # plan okuyucu thread'inden emit ediliyor, GUI widget'larına (konsol,
+        # durum rozeti) sadece GUI thread'inde dokunulmalı.
+        process.output_line.connect(
+            self.instance_page.server_section.append_console_line, Qt.ConnectionType.QueuedConnection
+        )
+        process.process_exited.connect(
+            lambda code, pid=pack.id: self._on_server_process_exited(pid, code),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._server_processes[pack.id] = process
+        self.instance_page.server_section.clear_console()
+        try:
+            process.start(cmd, cwd=server_root)
+        except ServerRuntimeError as exc:
+            self._on_error(str(exc))
+            del self._server_processes[pack.id]
+            return
+
+        self._refresh_server_section()
+        self.set_status(f"'{pack.name}' sunucusu başlatılıyor...")
+
+        # Java sürümü kontrolü SALT bilgilendirici (proje-amacı.md §6 ruhu:
+        # engelleyici olması gerekmeyen kontroller sunucuyu başlatmayı
+        # geciktirmemeli) — sunucu zaten başladı, bu paralel bir uyarı.
+        required = required_java_major(pack.minecraft)
+
+        async def check_java() -> int | None:
+            return await get_java_major_version(java_path)
+
+        def on_java_checked(major: int | None) -> None:
+            if major is not None and major < required:
+                QMessageBox.warning(
+                    self, "Java Sürümü Uyarısı",
+                    f"Tespit edilen Java sürümü: {major}. Minecraft {pack.minecraft} için "
+                    f"Java {required}+ önerilir — sunucu açılışta hata verebilir.",
+                )
+
+        run_async(check_java, on_success=on_java_checked, on_error=lambda _m: None)
+
+    def do_server_stop(self) -> None:
+        if not self.current_pack:
+            return
+        process = self._server_processes.get(self.current_pack.id)
+        if process is None or not process.is_running:
+            return
+
+        async def task() -> None:
+            process.stop(timeout=30)
+
+        def on_success(_result: None) -> None:
+            self._refresh_server_section()
+
+        self.set_status("Sunucu durduruluyor (stop komutu gönderildi)...")
+        run_async(task, on_success=on_success, on_error=self._on_error)
+
+    def do_server_send_command(self, text: str) -> None:
+        if not self.current_pack:
+            return
+        process = self._server_processes.get(self.current_pack.id)
+        if process is None:
+            return
+        try:
+            process.send_command(text)
+        except ServerRuntimeError as exc:
+            self._on_error(str(exc))
+
+    # -- oyuncu paneli (Aternos benzeri — tamamen vanilla komutlarla) --------
+
+    def _get_running_process(self) -> ServerProcess | None:
+        if not self.current_pack:
+            return None
+        process = self._server_processes.get(self.current_pack.id)
+        return process if process is not None and process.is_running else None
+
+    def _send_player_command(self, command: str) -> None:
+        process = self._get_running_process()
+        if process is None:
+            return
+        try:
+            process.send_command(command)
+        except ServerRuntimeError as exc:
+            self._on_error(str(exc))
+
+    def do_player_heal(self, player: str) -> None:
+        self._send_player_command(heal_command(player))
+
+    def do_player_kill(self, player: str) -> None:
+        self._send_player_command(kill_command(player))
+
+    def do_player_damage(self, player: str, amount: int) -> None:
+        if not self.current_pack:
+            return
+        self._send_player_command(damage_command(player, amount, self.current_pack.minecraft))
+
+    def do_player_feed(self, player: str) -> None:
+        self._send_player_command(feed_command(player))
+
+    def do_player_hunger(self, player: str, duration_s: int) -> None:
+        self._send_player_command(hunger_command(player, duration_s))
+
+    def do_player_inventory(self, player: str) -> None:
+        process = self._get_running_process()
+        if process is None:
+            return
+
+        async def task() -> str | None:
+            return process.send_command_and_wait(
+                inventory_query_command(player),
+                match=re.compile(r"has the following entity data:"),
+                timeout=5,
+            )
+
+        def on_success(line: str | None) -> None:
+            if line is None:
+                self._on_error(f"{player} için envanter yanıtı alınamadı (zaman aşımı).")
+                return
+            self.instance_page.server_section.player_panel.set_inventory(parse_item_list_response(line) or [])
+
+        run_async(task, on_success=on_success, on_error=self._on_error)
+
+    def do_player_ender_chest(self, player: str) -> None:
+        process = self._get_running_process()
+        if process is None:
+            return
+
+        async def task() -> str | None:
+            return process.send_command_and_wait(
+                ender_chest_query_command(player),
+                match=re.compile(r"has the following entity data:"),
+                timeout=5,
+            )
+
+        def on_success(line: str | None) -> None:
+            if line is None:
+                self._on_error(f"{player} için ender sandığı yanıtı alınamadı (zaman aşımı).")
+                return
+            self.instance_page.server_section.player_panel.set_ender_chest(parse_item_list_response(line) or [])
+
+        run_async(task, on_success=on_success, on_error=self._on_error)
+
+    def _poll_players(self) -> None:
+        """Her 4 saniyede bir (bkz. __init__) — SADECE şu an açık pack'in
+        sunucusu çalışıyorsa gerçekten bir şey yapar, aksi halde hemen
+        çıkar (gereksiz arkaplan iş yok)."""
+        if self._polling_players:
+            return
+        process = self._get_running_process()
+        if process is None:
+            return
+        self._polling_players = True
+
+        async def task() -> str | None:
+            return process.send_command_and_wait(
+                list_players_command(), match=re.compile(r"players online:"), timeout=3
+            )
+
+        def on_success(line: str | None) -> None:
+            self._polling_players = False
+            if line is None:
+                return
+            names = parse_list_response(line)
+            if names is not None:
+                self.instance_page.server_section.player_panel.set_players(names)
+
+        def on_error(_message: str) -> None:
+            self._polling_players = False
+
+        run_async(task, on_success=on_success, on_error=on_error)
+
+    def _on_server_process_exited(self, pack_id: str, returncode: int) -> None:
+        self._server_processes.pop(pack_id, None)
+        if self.current_pack is None or self.current_pack.id != pack_id:
+            return
+        self._refresh_server_section()
+        if returncode == 0:
+            self.set_status("Sunucu durdu.")
+        else:
+            self.set_status(f"Sunucu beklenmedik şekilde kapandı (çıkış kodu {returncode}).")
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Hiç kapatma engeli yoktu — çalışan bir sunucu varken pencere
+        kapatılırsa süreç sessizce öksüz kalırdı (RAM/port tutmaya devam
+        eder). Şimdi kullanıcıya SORUYOR, sessizce ne kill ediyor ne de
+        öksüz bırakıyor."""
+        running = {pid: p for pid, p in self._server_processes.items() if p.is_running}
+        if not running:
+            event.accept()
+            return
+
+        answer = QMessageBox.question(
+            self, "Sunucular Çalışıyor",
+            f"{len(running)} sunucu hâlâ çalışıyor. Kapatmadan önce düzgünce durdurulsun mu?\n\n"
+            "Hayır derseniz süreçler mcpack kapandıktan sonra da ÇALIŞMAYA DEVAM EDER "
+            "(öksüz kalır) — kendiniz durdurmanız gerekir.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Cancel:
+            event.ignore()
+            return
+        if answer == QMessageBox.StandardButton.Yes:
+            for process in running.values():
+                process.stop(timeout=15)
+        event.accept()
 
     def remove_mod(self, project_id: str) -> None:
         if not self.current_pack:

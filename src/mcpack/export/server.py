@@ -64,7 +64,7 @@ def filter_server_mods(pack: Pack, known_client_only_slugs: set[str] | None = No
     return [m for m in pack.mods if is_server_compatible(m, known)]
 
 
-async def _ensure_server_file_downloaded(
+async def ensure_server_file_downloaded(
     download: ServerDownload,
     cache_dir: Path,
     client: httpx.AsyncClient,
@@ -75,7 +75,11 @@ async def _ensure_server_file_downloaded(
     cache_dir'de ve (varsa) hash'i tutuyorsa tekrar indirilmez. Fabric/Quilt/
     Forge/NeoForge'ta resmi API hash vermediği için (sha1=None) bu durumlarda
     sadece "dosya zaten var mı" kontrol edilir — export'u her çalıştırışta
-    aynı sunucu dosyasını tekrar tekrar indirmemek için."""
+    aynı sunucu dosyasını tekrar tekrar indirmemek için.
+
+    Public (alt çizgisiz): server_runtime.py'deki prepare_server de aynı
+    indirme+cache mantığını kullanır (export'un zip'e gömdüğü dosyayla
+    yerel sunucu kurulumunun kullandığı dosya aynı kod yolundan geçer)."""
     cache_dir.mkdir(parents=True, exist_ok=True)
     dest = cache_dir / download.file_name
     if dest.exists():
@@ -198,7 +202,7 @@ class ServerPackExporter(Exporter):
                 server_download = await get_server_download(
                     client, pack.loader, pack.minecraft, pack.loader_version
                 )
-                dest = await _ensure_server_file_downloaded(
+                dest = await ensure_server_file_downloaded(
                     server_download, cache_dir, client, cancel_event=cancel_event
                 )
                 override_files.append((dest, server_download.file_name))

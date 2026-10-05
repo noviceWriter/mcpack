@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mcpack.gui.server_section import ServerSection
 from mcpack.gui.theme import loader_color
 from mcpack.gui.widgets import (
     _env_badge_widget,
@@ -651,6 +652,10 @@ class InstancePage(QWidget):
         self.world_section = WorldSection()
         self.stack.addWidget(self.world_section)
 
+        self.rail.addItem(QListWidgetItem("🖥 Sunucu"))
+        self.server_section = ServerSection()
+        self.stack.addWidget(self.server_section)
+
         # Cheat Modları: stack widget'ı HER ZAMAN burada (sabit son index),
         # ama rail satırı sadece Fabric pack'lerinde eklenir (bkz. show_pack)
         # — bu sayede rail satır index'i ile stack index'i arasındaki 1:1
@@ -674,6 +679,7 @@ class InstancePage(QWidget):
         for section in self.content_sections.values():
             section.show_pack(pack)
         self.world_section.show_pack(pack)
+        self.server_section.show_pack(pack)
         self.cheat_mods_section.show_pack(pack)
 
         if pack is None:

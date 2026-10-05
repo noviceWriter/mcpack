@@ -39,6 +39,9 @@ class Settings(BaseModel):
     """Aynı mod her iki sitede de varsa Modrinth tercih edilsin mi."""
     sklauncher_path: str = ""
     """Portable SKLauncher yolu (Windows .exe, Linux AppImage veya .jar)."""
+    java_path: str = ""
+    """Yerel sunucu başlatmak için kullanılacak java yürütülebilir dosyası
+    (bkz. server_runtime.py:find_java) — boşsa PATH'teki `java` kullanılır."""
     packs_dir: str = ""
     """Boşsa default_packs_dir() kullanılır."""
     exclude_logs: bool = True

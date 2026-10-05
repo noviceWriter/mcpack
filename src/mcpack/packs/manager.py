@@ -139,6 +139,10 @@ class PackManager:
         # resourcepack/datapack dosyaları yetim kalıp diskte sonsuza kadar
         # kalırdı — pack'le birlikte onları da temizliyoruz.
         shutil.rmtree(self.packs_dir / "content" / pack_id, ignore_errors=True)
+        # Aynı mantık yerel sunucu klasörü için de geçerli (bkz. server_root)
+        # — çağıran taraf (gui/main_window.py) silmeden önce sürecin
+        # çalışmadığından emin olmalı, burası sadece disk temizliği yapar.
+        shutil.rmtree(self.packs_dir / "servers" / pack_id, ignore_errors=True)
 
     def content_root(self, pack: Pack) -> Path:
         """Pack'e yüklenmiş shader/resourcepack/datapack/dünya dosyalarının
@@ -147,6 +151,38 @@ class PackManager:
         geldiği için export sırasında beklenen bir "source_dir" olmayabilir;
         bu yüzden pack'in kendi kalıcı deposunda tutulur."""
         return self.packs_dir / "content" / pack.id
+
+    def server_root(self, pack: Pack) -> Path:
+        """pack'in YEREL, çalıştırılabilir sunucu kurulumunun tutulduğu
+        klasör (bkz. server_runtime.py) — export/server.py'nin ürettiği
+        geçici zip'in aksine kalıcıdır, tekrar tekrar "Hazırla" ile
+        güncellenir ve doğrudan buradan `java` ile başlatılır."""
+        return self.packs_dir / "servers" / pack.id
+
+    def update_server_config(
+        self,
+        pack: Pack,
+        *,
+        memory_mb: int | None = None,
+        selected_world: str | None = ...,
+        eula_accepted: bool | None = None,
+        use_optimized_flags: bool | None = None,
+    ) -> Pack:
+        """set_mod_env'deki aynı "sadece verilenleri güncelle" deseni.
+
+        selected_world için `...` (Ellipsis) varsayılanı kullanılır —
+        None GEÇERLİ bir değer (dünya seçimini kaldır) olduğu için, "hiç
+        verilmedi" ile "None'a ayarla" ayrımı başka türlü yapılamazdı."""
+        if memory_mb is not None:
+            pack.server.memory_mb = memory_mb
+        if selected_world is not ...:
+            pack.server.selected_world = selected_world
+        if eula_accepted is not None:
+            pack.server.eula_accepted = eula_accepted
+        if use_optimized_flags is not None:
+            pack.server.use_optimized_flags = use_optimized_flags
+        self.save(pack)
+        return pack
 
     def add_content(
         self, pack: Pack, kind: ContentKind, source_path: Path, *, display_name: str | None = None

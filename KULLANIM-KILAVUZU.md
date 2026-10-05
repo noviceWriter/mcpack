@@ -132,6 +132,64 @@ belirledikten sonra, bu buton pack'inizi bir SKLauncher instance'ı olarak
 hazırlar ve SKLauncher'ı açar — **Minecraft'ı doğrudan MC Pack Manager
 çalıştırmaz, hazırlığı yapıp işi SKLauncher'a devreder.**
 
+### 4.4 Sunucu Yönetimi (yerel sunucu başlat/durdur)
+
+4.1'deki "Sunucu Paketi" bir zip ÜRETİR (başka yere taşıyıp elle
+çalıştırırsınız) — instance sayfasındaki sol rafta **"🖥 Sunucu"**
+bölümü ise sunucuyu doğrudan MC Pack Manager İÇİNDEN, ayrı bir terminale
+hiç gitmeden çalıştırır:
+
+1. **Hazırla / Güncelle**: pack'inizdeki sunucuya uygun modları + gerçek
+   sunucu dosyasını (bkz. 4.1) indirip pack'in kendi kalıcı sunucu
+   klasörüne kurar/günceller.
+2. **Forge/NeoForge'ta ek bir adım**: resmi olarak sadece bir *kurulum
+   programı* var — "Hazırla"dan sonra bir **"Kur"** butonu belirir, ona
+   basmanız gerekir (bir kerelik).
+3. **Başlat**: ilk seferinde Minecraft EULA'sını (gerçek metne link
+   verilir) kabul etmeniz istenir — kabul etmeden sunucu başlamaz, bu
+   SİZİN kararınızdır. Java sisteminizde yoksa ya da PATH'te
+   bulunamıyorsa Ayarlar'dan **Java Yolu**'nu elle belirtebilirsiniz.
+4. **Canlı + renkli konsol**: sunucunun gerçek log çıktısı anlık olarak
+   ekranda akar (HATA satırları kırmızı, UYARI satırları turuncu);
+   **Konsolu Temizle**, konsolda **Ara**, ve **Otomatik Kaydır**
+   (kapatırsanız yeni satırlar gelince sayfa aşağı zıplamaz, eski loga
+   rahat bakabilirsiniz) araçları var. Alttaki kutudan sunucuya komut
+   yazıp (ör. `op <isim>`, `say merhaba`) **Gönder**'e basabilir, **↑/↓**
+   ile daha önce gönderdiğiniz komutlar arasında (terminal gibi)
+   gezinebilirsiniz.
+5. **Oyuncular paneli**: sunucu çalışırken çevrimiçi oyuncular ~4
+   saniyede bir otomatik listelenir (ya da **Listeyi Yenile**'ye basın).
+   Bir oyuncu seçince, komut yazmadan: **İyileştir**, **Öldür**, **Hasar
+   Ver** (miktar girilebilir — MC 1.19.4+'ta tam isabetli, öncesinde
+   yaklaşık), **Doyur**, **Açlığı Azalt** (bu SADECE süre boyunca daha
+   hızlı acıktırır, vanilla'da "anında belirli bir seviyeye ayarlama"
+   diye bir şey yok — buton bunu açıkça belirtir), **Envanteri
+   Görüntüle** (zırh + eldeki/ikinci eldeki eşya dahil) ve **Ender
+   Sandığını Görüntüle** — hepsi SALT OKUNUR, tamamen vanilla
+   komutlarla (RCON/eklenti gerekmez). Envanter DÜZENLEME yoktur —
+   Minecraft bunu oyuncu hesapları için zaten engeller (hile önleme).
+6. **Durdur**: sunucuya GERÇEK Minecraft `stop` komutunu gönderir (dünya
+   düzgünce kaydedilir) — asla zorla kapatmaz.
+7. **Ayarlar**:
+   - **Bellek (RAM)**: GB cinsinden bir açılır listeden seçin, ya da
+     "Özel (MB)" ile tam MB girin. **Listede, bilgisayarınızın gerçek
+     RAM'inden FAZLA bir seçenek hiç gösterilmez** — sisteminiz
+     donmasın diye her zaman en az 2 GB size bırakılır (ör. 16 GB
+     RAM'iniz varsa sunucuya en fazla 14 GB ayrılabilir; bu sınır
+     otomatik hesaplanır, elle bir şey yapmanız gerekmez).
+   - **Performans bayraklarını kullan (Aikar's flags)**: işaretlerseniz
+     Minecraft sunucu topluluğunda yıllardır bilinen, GC
+     duraklamalarını azaltan standart bir JVM bayrak seti eklenir —
+     mcpack'e özgü değil, sadece doğru bayrakları sizin için üretiyoruz.
+   - Hangi yüklü dünyanın kullanılacağı, ve en sık değiştirilen
+     `server.properties` alanları (MOTD, zorluk, oyun modu, port, PVP,
+     beyaz liste, görüş mesafesi...) buradan düzenlenip kaydedilebilir —
+     kaydetmek sunucunun kendi ürettiği diğer tüm ayarları SİLMEZ,
+     sadece bu alanları günceller.
+
+mcpack kapatılırken hâlâ çalışan bir sunucu varsa, önce düzgünce
+durdurulsun mu diye sorulur (sessizce öksüz bırakmaz).
+
 ## 5. Ayarlar
 
 Sağ üstteki **⚙ Ayarlar**'dan:
@@ -141,7 +199,8 @@ Sağ üstteki **⚙ Ayarlar**'dan:
   kontrol edebilirsiniz.
 - **Modrinth tercihi**: aynı mod iki kaynakta da varsa hangisinin tercih
   edileceği.
-- **SKLauncher yolu**, **export'ta hariç tutulacak klasörler** (logs,
+- **SKLauncher yolu**, **Java yolu** (bkz. 4.4 — boşsa PATH'teki `java`
+  kullanılır), **export'ta hariç tutulacak klasörler** (logs,
   crash-reports, saves).
 
 ## 6. Sık Sorulan Sorular

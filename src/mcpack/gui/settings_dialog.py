@@ -72,6 +72,18 @@ class SettingsDialog(QDialog):
         sklauncher_layout.addWidget(browse_button)
         form.addRow("Taşınabilir Yol:", sklauncher_row)
 
+        form.addRow(_section_label("Yerel Sunucu"))
+        java_row = QWidget()
+        java_layout = QHBoxLayout(java_row)
+        java_layout.setContentsMargins(0, 0, 0, 0)
+        self.java_input = QLineEdit(settings.java_path)
+        self.java_input.setPlaceholderText("Boşsa PATH'teki java kullanılır")
+        java_layout.addWidget(self.java_input)
+        java_browse_button = QPushButton("Gözat...")
+        java_browse_button.clicked.connect(self._browse_java)
+        java_layout.addWidget(java_browse_button)
+        form.addRow("Java Yolu:", java_row)
+
         form.addRow(_section_label("Dışa Aktarma"))
         self.exclude_logs_checkbox = QCheckBox("Dışa aktarımda logs/ klasörünü hariç tut")
         self.exclude_logs_checkbox.setChecked(settings.exclude_logs)
@@ -99,6 +111,11 @@ class SettingsDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "Taşınabilir SKLauncher Seç")
         if path:
             self.sklauncher_input.setText(path)
+
+    def _browse_java(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Java Yürütülebilir Dosyasını Seç")
+        if path:
+            self.java_input.setText(path)
 
     def _on_cf_key_changed(self, text: str) -> None:
         self.cf_test_button.setEnabled(bool(text.strip()))
@@ -139,6 +156,7 @@ class SettingsDialog(QDialog):
         settings.theme = "dark"
         settings.curseforge_api_key = self.cf_key_input.text().strip()
         settings.sklauncher_path = self.sklauncher_input.text().strip()
+        settings.java_path = self.java_input.text().strip()
         settings.prefer_modrinth = self.prefer_modrinth_checkbox.isChecked()
         settings.exclude_logs = self.exclude_logs_checkbox.isChecked()
         settings.exclude_crash_reports = self.exclude_crash_reports_checkbox.isChecked()

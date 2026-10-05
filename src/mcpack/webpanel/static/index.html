@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>mcpack Web Paneli</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<div id="login-screen" class="hidden">
+  <div class="login-card">
+    <h1>🖥 mcpack Web Paneli</h1>
+    <p class="sub">Bu panel ağdaki diğer cihazlardan da erişilebilir — şifrenizi girin.</p>
+    <div class="login-error" id="login-error"></div>
+    <input type="password" id="login-password" placeholder="Şifre" autofocus />
+    <button class="primary" id="login-button">Giriş Yap</button>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <span class="logo">🖥 mcpack</span>
+      <span id="network-badge">...</span>
+    </div>
+    <div id="server-list"></div>
+  </div>
+
+  <div id="main">
+    <div id="empty-state">Soldan bir pack seçin.</div>
+
+    <div id="server-view" class="hidden" style="display:flex; flex-direction:column; height:100%;">
+      <div id="main-header">
+        <div>
+          <h2 id="server-name">—</h2>
+          <div class="meta" id="server-meta">—</div>
+        </div>
+        <span class="status-pill stopped" id="status-pill">Durduruldu</span>
+        <div id="action-row">
+          <button id="btn-prepare">Hazırla / Güncelle</button>
+          <button id="btn-install" class="hidden">Kur (installServer)</button>
+          <button id="btn-start" class="primary">Başlat</button>
+          <button id="btn-stop" class="danger">Durdur</button>
+        </div>
+      </div>
+
+      <div id="mods-bar">
+        <span id="mods-bar-title">Modlar (sunucuda çalışacak): —</span>
+        <span id="mods-bar-list"></span>
+        <span id="mods-bar-excluded" class="meta"></span>
+      </div>
+
+      <div id="tabs">
+        <button class="tab-button active" data-tab="console">Konsol</button>
+        <button class="tab-button" data-tab="players">Oyuncular</button>
+        <button class="tab-button" data-tab="settings">Ayarlar</button>
+      </div>
+
+      <div id="tab-content">
+        <div class="tab-pane active" id="tab-console">
+          <div id="console-toolbar">
+            <button id="btn-clear-console">Konsolu Temizle</button>
+            <label class="inline"><input type="checkbox" id="auto-scroll" checked /> Otomatik Kaydır</label>
+          </div>
+          <div id="console"></div>
+          <div id="command-row">
+            <input type="text" id="command-input" placeholder="Sunucu komutu yazın (ör. say merhaba, op <isim>) — ↑/↓ ile geçmiş..." disabled />
+            <button id="btn-send-command" disabled>Gönder</button>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-players">
+          <div id="players-layout">
+            <div id="players-list">
+              <div class="meta" style="margin-bottom:8px;">Çevrimiçi Oyuncular</div>
+              <div id="players-list-items"></div>
+              <button id="btn-refresh-players" style="width:100%; margin-top:8px;">Listeyi Yenile</button>
+            </div>
+            <div id="players-detail">
+              <p class="meta" id="players-empty">Bir oyuncu seçin.</p>
+              <div id="players-detail-body" class="hidden">
+                <div class="action-grid">
+                  <button id="p-heal">İyileştir</button>
+                  <button id="p-kill" class="danger">Öldür</button>
+                  <button id="p-feed">Doyur</button>
+                  <button id="p-damage">Hasar Ver</button>
+                  <input type="number" id="p-damage-amount" class="amount-input" value="4" min="1" />
+                  <button id="p-hunger" title="Vanilla'da açlığı anında belirli bir değere ayarlamanın bir yolu yok — bu, süre boyunca normalden daha hızlı acıktırır.">Açlığı Azalt</button>
+                  <input type="number" id="p-hunger-seconds" class="amount-input" value="30" min="5" />
+                </div>
+
+                <div class="card">
+                  <h3>Envanter (zırh + ikinci el dahil) — salt okunur</h3>
+                  <button id="btn-view-inventory">Envanteri Görüntüle</button>
+                  <table class="item-table" id="inventory-table" style="margin-top:10px;">
+                    <thead><tr><th>Bölüm</th><th>Eşya</th><th>Adet</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+
+                <div class="card">
+                  <h3>Ender Sandığı — salt okunur</h3>
+                  <button id="btn-view-ender">Ender Sandığını Görüntüle</button>
+                  <table class="item-table" id="ender-table" style="margin-top:10px;">
+                    <thead><tr><th>Slot</th><th>Eşya</th><th>Adet</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-settings">
+          <div class="card">
+            <h3>Çalışma Ayarları</h3>
+            <div class="settings-grid">
+              <label for="mem-preset">Bellek (RAM)</label>
+              <div>
+                <select id="mem-preset"></select>
+                <input type="number" id="mem-custom" class="hidden" style="width:100px; margin-left:8px;" />
+              </div>
+              <div class="full" id="memory-info"></div>
+
+              <label for="world-select">Dünya</label>
+              <select id="world-select"><option value="">(dünya yok)</option></select>
+
+              <label for="optimized-flags">Performans</label>
+              <label class="inline" style="display:inline-flex; gap:6px;">
+                <input type="checkbox" id="optimized-flags" /> Performans bayraklarını kullan (Aikar's flags)
+              </label>
+
+              <div class="full"><button class="primary" id="btn-save-settings">Ayarları Kaydet</button></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>server.properties</h3>
+            <div class="settings-grid" id="properties-grid"></div>
+            <div style="margin-top:14px;"><button class="primary" id="btn-save-properties">server.properties'i Kaydet</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

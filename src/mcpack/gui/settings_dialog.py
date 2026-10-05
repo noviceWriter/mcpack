@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -83,6 +84,27 @@ class SettingsDialog(QDialog):
         java_browse_button.clicked.connect(self._browse_java)
         java_layout.addWidget(java_browse_button)
         form.addRow("Java Yolu:", java_row)
+
+        form.addRow(_section_label("Web Paneli"))
+        self.web_panel_port_input = QSpinBox()
+        self.web_panel_port_input.setRange(1024, 65535)
+        self.web_panel_port_input.setValue(settings.web_panel_port)
+        form.addRow("Port:", self.web_panel_port_input)
+
+        self.web_panel_password_input = QLineEdit(settings.web_panel_password)
+        self.web_panel_password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.web_panel_password_input.setPlaceholderText(
+            "Boşsa panel ağa AÇILMAZ, sadece bu bilgisayardan erişilir"
+        )
+        form.addRow("Şifre:", self.web_panel_password_input)
+        web_panel_note = QLabel(
+            "Şifre girerseniz panel aynı ağdaki (ör. telefonunuz) diğer cihazlardan da "
+            "erişilebilir olur — bu yüzden şifre ZORUNLUDUR. Boş bırakırsanız panel sadece "
+            "bu bilgisayardan açılabilir."
+        )
+        web_panel_note.setWordWrap(True)
+        web_panel_note.setProperty("role", "muted")
+        form.addRow("", web_panel_note)
 
         form.addRow(_section_label("Dışa Aktarma"))
         self.exclude_logs_checkbox = QCheckBox("Dışa aktarımda logs/ klasörünü hariç tut")
@@ -157,6 +179,8 @@ class SettingsDialog(QDialog):
         settings.curseforge_api_key = self.cf_key_input.text().strip()
         settings.sklauncher_path = self.sklauncher_input.text().strip()
         settings.java_path = self.java_input.text().strip()
+        settings.web_panel_port = self.web_panel_port_input.value()
+        settings.web_panel_password = self.web_panel_password_input.text()
         settings.prefer_modrinth = self.prefer_modrinth_checkbox.isChecked()
         settings.exclude_logs = self.exclude_logs_checkbox.isChecked()
         settings.exclude_crash_reports = self.exclude_crash_reports_checkbox.isChecked()

@@ -31,6 +31,9 @@ def main() -> None:
             f"{ROOT / 'data'}{';' if sys.platform == 'win32' else ':'}data",
             "--add-data",
             f"{ROOT / 'src' / 'mcpack' / 'assets'}{';' if sys.platform == 'win32' else ':'}assets",
+            "--add-data",
+            f"{ROOT / 'src' / 'mcpack' / 'webpanel' / 'static'}"
+            f"{';' if sys.platform == 'win32' else ':'}webpanel_static",
             str(ROOT / "src" / "mcpack" / "main.py"),
         ],
         cwd=ROOT,

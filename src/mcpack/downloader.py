@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import threading
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 
@@ -110,7 +111,14 @@ async def download_file(
     for attempt in range(1, max_retries + 1):
         if cancel_event is not None and cancel_event.is_set():
             raise DownloadCancelledError(f"{dest.name}: kullanıcı tarafından iptal edildi")
-        tmp_path = dest.with_suffix(dest.suffix + ".part")
+        # Benzersiz tmp dosyası (sabit bir ad DEĞİL): aynı dest'e eşzamanlı
+        # iki indirme başlarsa (ör. kullanıcı "Hazırla"ya art arda hızlı
+        # tıklarsa, ya da artık Qt VE web paneli aynı pack'i aynı anda
+        # hazırlarsa) ikisi de AYNI tmp dosyasını kullanıp biri diğerini
+        # rename'den önce silebiliyordu (gerçek bir FileNotFoundError
+        # olarak web panelinde yakalandı) — her çağrı kendi tmp dosyasını
+        # alınca bu çakışma artık mümkün değil.
+        tmp_path = dest.with_name(f"{dest.name}.{uuid.uuid4().hex[:8]}.part")
         try:
             downloaded = 0
             async with client.stream("GET", url) as response:

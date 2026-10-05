@@ -55,6 +55,7 @@ from mcpack.packs import PackManager
 from mcpack.server_properties import merged_with_defaults, read_properties, write_properties
 from mcpack.server_runtime import (
     ServerProcess,
+    ServerProcessRegistry,
     ServerRuntimeError,
     build_launch_command,
     damage_command,
@@ -98,10 +99,18 @@ class MainWindow(QMainWindow):
         self.current_pack: Pack | None = None
         self._cancel_event: threading.Event | None = None
         self._mod_search_dialog: ModSearchDialog | None = None
-        self._server_processes: dict[str, ServerProcess] = {}
-        """pack.id -> ServerProcess — sayfa Kütüphane↔Instance arası geçince
-        de süreç canlı kalsın diye burada, MainWindow'da tutulur (bkz.
-        _refresh_server_section, closeEvent)."""
+        self._registry = ServerProcessRegistry()
+        """pack.id -> ServerProcess eşlemesi — sayfa Kütüphane↔Instance
+        arası geçince de süreç canlı kalsın diye burada tutulur (bkz.
+        _refresh_server_section, closeEvent). Thread-safe: web paneli
+        (bkz. do_toggle_web_panel) başlatılırsa AYNI nesneyi paylaşır,
+        böylece Qt'den başlatılan bir sunucu web panelinde de "çalışıyor"
+        görünür ve tam tersi."""
+        self._web_panel_handle = None
+        """webpanel.app.WebPanelHandle | None — çalışan embedded web
+        sunucusu (varsa). Sadece kullanıcı "🌐 Web Paneli" butonuna
+        basarsa oluşturulur (proje isteği: kullanıcı isterse kapatabilsin,
+        varsayılan olarak bir ağ portu AÇILMAZ)."""
         self._player_poll_timer = QTimer(self)
         """Oyuncu paneli için periyodik /list sorgusu — SADECE şu an açık
         pack'in sunucusu çalışıyorken tetiklenir (bkz. _poll_players),
@@ -154,6 +163,13 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
+
+        self.web_panel_button = QPushButton("🌐 Web Paneli")
+        self.web_panel_button.setToolTip(
+            "Sunucu yönetimi için yerel bir web paneli başlatır (kullanıcı isterse kapatabilir)."
+        )
+        self.web_panel_button.clicked.connect(self.do_toggle_web_panel)
+        toolbar.addWidget(self.web_panel_button)
 
         settings_button = QPushButton("⚙ Ayarlar")
         settings_button.clicked.connect(self.open_settings_dialog)
@@ -250,6 +266,32 @@ class MainWindow(QMainWindow):
             dialog.apply_to(self.settings)
             self.settings.save()
             self._apply_theme()  # tema değişmiş olabilir, yeniden başlatmadan uygula
+
+    def do_toggle_web_panel(self) -> None:
+        """"🌐 Web Paneli" butonu: kapalıysa başlatır + tarayıcıda açar,
+        açıksa durdurur — kullanıcı isteği: "kullanıcı isterse web kısmını
+        da kapatabilir". Embedded sunucu AYRI bir thread'de çalışır (bkz.
+        webpanel.start_web_panel), Qt'nin kendi event loop'uyla çakışmaz;
+        Qt ve web paneli AYNI self._registry'yi paylaşır (bkz. __init__)."""
+        if self._web_panel_handle is not None:
+            self._web_panel_handle.stop()
+            self._web_panel_handle = None
+            self.web_panel_button.setText("🌐 Web Paneli")
+            self.set_status("Web paneli kapatıldı.")
+            return
+
+        from mcpack.webpanel import start_web_panel
+
+        handle = start_web_panel(manager=self.manager, registry=self._registry, settings=self.settings)
+        self._web_panel_handle = handle
+        self.web_panel_button.setText("🌐 Web Panelini Kapat")
+        if handle.network_exposed:
+            self.set_status(
+                f"Web paneli AĞA AÇIK: {handle.url} (aynı ağdaki cihazlar şifreyle erişebilir)"
+            )
+        else:
+            self.set_status(f"Web paneli başlatıldı (sadece bu bilgisayar): {handle.url}")
+        QDesktopServices.openUrl(QUrl(handle.url))
 
     # -- kütüphane / instance sayfaları arası gezinme -------------------------
 
@@ -379,7 +421,7 @@ class MainWindow(QMainWindow):
         root = self.manager.server_root(pack)
         section.set_state(server_state(root))
 
-        process = self._server_processes.get(pack.id)
+        process = self._registry.get(pack.id)
         running = process is not None and process.is_running
         section.set_running(running)
         if process is not None:
@@ -527,13 +569,13 @@ class MainWindow(QMainWindow):
             lambda code, pid=pack.id: self._on_server_process_exited(pid, code),
             Qt.ConnectionType.QueuedConnection,
         )
-        self._server_processes[pack.id] = process
+        self._registry.set(pack.id, process)
         self.instance_page.server_section.clear_console()
         try:
             process.start(cmd, cwd=server_root)
         except ServerRuntimeError as exc:
             self._on_error(str(exc))
-            del self._server_processes[pack.id]
+            self._registry.pop(pack.id)
             return
 
         self._refresh_server_section()
@@ -560,7 +602,7 @@ class MainWindow(QMainWindow):
     def do_server_stop(self) -> None:
         if not self.current_pack:
             return
-        process = self._server_processes.get(self.current_pack.id)
+        process = self._registry.get(self.current_pack.id)
         if process is None or not process.is_running:
             return
 
@@ -576,7 +618,7 @@ class MainWindow(QMainWindow):
     def do_server_send_command(self, text: str) -> None:
         if not self.current_pack:
             return
-        process = self._server_processes.get(self.current_pack.id)
+        process = self._registry.get(self.current_pack.id)
         if process is None:
             return
         try:
@@ -589,7 +631,7 @@ class MainWindow(QMainWindow):
     def _get_running_process(self) -> ServerProcess | None:
         if not self.current_pack:
             return None
-        process = self._server_processes.get(self.current_pack.id)
+        process = self._registry.get(self.current_pack.id)
         return process if process is not None and process.is_running else None
 
     def _send_player_command(self, command: str) -> None:
@@ -688,7 +730,7 @@ class MainWindow(QMainWindow):
         run_async(task, on_success=on_success, on_error=on_error)
 
     def _on_server_process_exited(self, pack_id: str, returncode: int) -> None:
-        self._server_processes.pop(pack_id, None)
+        self._registry.pop(pack_id)
         if self.current_pack is None or self.current_pack.id != pack_id:
             return
         self._refresh_server_section()
@@ -702,14 +744,16 @@ class MainWindow(QMainWindow):
         kapatılırsa süreç sessizce öksüz kalırdı (RAM/port tutmaya devam
         eder). Şimdi kullanıcıya SORUYOR, sessizce ne kill ediyor ne de
         öksüz bırakıyor."""
-        running = {pid: p for pid, p in self._server_processes.items() if p.is_running}
-        if not running:
+        running_ids = self._registry.all_running_ids()
+        if not running_ids:
+            if self._web_panel_handle is not None:
+                self._web_panel_handle.stop()
             event.accept()
             return
 
         answer = QMessageBox.question(
             self, "Sunucular Çalışıyor",
-            f"{len(running)} sunucu hâlâ çalışıyor. Kapatmadan önce düzgünce durdurulsun mu?\n\n"
+            f"{len(running_ids)} sunucu hâlâ çalışıyor. Kapatmadan önce düzgünce durdurulsun mu?\n\n"
             "Hayır derseniz süreçler mcpack kapandıktan sonra da ÇALIŞMAYA DEVAM EDER "
             "(öksüz kalır) — kendiniz durdurmanız gerekir.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
@@ -719,8 +763,12 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         if answer == QMessageBox.StandardButton.Yes:
-            for process in running.values():
-                process.stop(timeout=15)
+            for pid in running_ids:
+                process = self._registry.get(pid)
+                if process is not None:
+                    process.stop(timeout=15)
+        if self._web_panel_handle is not None:
+            self._web_panel_handle.stop()
         event.accept()
 
     def remove_mod(self, project_id: str) -> None:

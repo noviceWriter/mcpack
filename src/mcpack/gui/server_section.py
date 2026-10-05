@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -32,6 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mcpack.export.server import filter_server_mods
 from mcpack.gui.player_panel import PlayerPanel
 from mcpack.gui.theme import danger_color, status_good_color
 from mcpack.models import ContentKind, Pack
@@ -158,6 +160,17 @@ class ServerSection(QWidget):
         button_row.addWidget(self.stop_button)
         button_row.addStretch()
         outer.addLayout(button_row)
+
+        self.mods_box = QGroupBox("Modlar (sunucuda çalışacak)")
+        mods_layout = QVBoxLayout(self.mods_box)
+        self.mods_list = QListWidget()
+        self.mods_list.setMaximumHeight(130)
+        mods_layout.addWidget(self.mods_list)
+        self.mods_excluded_label = QLabel("")
+        self.mods_excluded_label.setProperty("role", "muted")
+        self.mods_excluded_label.setWordWrap(True)
+        mods_layout.addWidget(self.mods_excluded_label)
+        outer.addWidget(self.mods_box)
 
         player_box = QGroupBox("Oyuncular")
         player_layout = QVBoxLayout(player_box)
@@ -440,8 +453,31 @@ class ServerSection(QWidget):
 
     # -- MainWindow'un çağırdığı güncelleme metodları -------------------------
 
+    def _refresh_mods_list(self, pack: Pack | None) -> None:
+        """Kullanıcı isteği: "server kısmında mod falan var ise onları da
+        göstersin" — Hazırla'ya basılınca server_root'a kopyalanacak
+        modların AYNISI (bkz. export/server.py:filter_server_mods, hem zip
+        export'ta hem burada aynı eleme mantığı) burada da listelenir."""
+        self.mods_list.clear()
+        if pack is None:
+            self.mods_box.setTitle("Modlar (sunucuda çalışacak)")
+            self.mods_excluded_label.setText("")
+            return
+        server_mods = filter_server_mods(pack)
+        self.mods_box.setTitle(f"Modlar (sunucuda çalışacak) — {len(server_mods)}")
+        for mod in server_mods:
+            self.mods_list.addItem(mod.name or mod.file_name)
+        excluded = len(pack.mods) - len(server_mods)
+        if excluded > 0:
+            self.mods_excluded_label.setText(
+                f"+ {excluded} istemci-only mod sunucu için hariç tutuldu (ör. Sodium, Iris benzeri)."
+            )
+        else:
+            self.mods_excluded_label.setText("")
+
     def show_pack(self, pack: Pack | None) -> None:
         self._pack = pack
+        self._refresh_mods_list(pack)
         self.world_combo.blockSignals(True)
         self.memory_spin.blockSignals(True)
         self.optimized_checkbox.blockSignals(True)

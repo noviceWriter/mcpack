@@ -21,6 +21,7 @@ from mcpack.server_runtime import (
     AIKARS_FLAGS,
     InventoryItem,
     ServerProcess,
+    ServerProcessRegistry,
     ServerRuntimeError,
     build_launch_command,
     categorize_inventory_slot,
@@ -349,6 +350,81 @@ def test_server_process_send_command_and_wait_times_out_when_no_match(tmp_path: 
         assert result is None
     finally:
         process.stop(timeout=5)
+
+
+def test_server_process_add_listener_receives_live_lines_and_none_on_exit(tmp_path: Path):
+    """webpanel/app.py'nin WebSocket köprüsü için kullandığı düz-Python
+    dinleyici mekanizması — Qt Signal'den bağımsız olarak AYNI satırları
+    (+ süreç bitince None sentinel'i) almalı."""
+    script = tmp_path / "fake_server.py"
+    script.write_text(_FAKE_SERVER_SCRIPT, encoding="utf-8")
+
+    process = ServerProcess()
+    received: list[str | None] = []
+    process.add_listener(received.append)
+
+    process.start([sys.executable, str(script)], cwd=tmp_path)
+    _wait_until(lambda: any(line and "Done!" in line for line in received))
+
+    process.stop(timeout=5)
+    _wait_until(lambda: received[-1] is None)
+    assert received[-1] is None
+
+
+def test_server_process_remove_listener_stops_receiving(tmp_path: Path):
+    script = tmp_path / "fake_server.py"
+    script.write_text(_FAKE_SERVER_SCRIPT, encoding="utf-8")
+
+    process = ServerProcess()
+    received: list[str | None] = []
+    process.add_listener(received.append)
+    process.remove_listener(received.append)
+
+    process.start([sys.executable, str(script)], cwd=tmp_path)
+    try:
+        _wait_until(lambda: process.is_running)
+        time.sleep(0.3)
+        assert received == []  # dinleyici kaldırıldığı için hiç çağrılmadı
+    finally:
+        process.stop(timeout=5)
+
+
+# -- ServerProcessRegistry ------------------------------------------------------
+
+
+def test_registry_get_set_pop(tmp_path: Path):
+    registry = ServerProcessRegistry()
+    assert registry.get("abc") is None
+
+    process = ServerProcess()
+    registry.set("abc", process)
+    assert registry.get("abc") is process
+
+    assert registry.pop("abc") is process
+    assert registry.get("abc") is None
+    assert registry.pop("abc") is None  # ikinci pop sessizce None döner
+
+
+def test_registry_is_running_and_all_running_ids(tmp_path: Path):
+    script = tmp_path / "fake_server.py"
+    script.write_text(_FAKE_SERVER_SCRIPT, encoding="utf-8")
+
+    registry = ServerProcessRegistry()
+    assert registry.is_running("pack-1") is False
+    assert registry.all_running_ids() == []
+
+    process = ServerProcess()
+    registry.set("pack-1", process)
+    assert registry.is_running("pack-1") is False  # henüz start edilmedi
+
+    process.start([sys.executable, str(script)], cwd=tmp_path)
+    try:
+        _wait_until(lambda: process.is_running)
+        assert registry.is_running("pack-1") is True
+        assert registry.all_running_ids() == ["pack-1"]
+    finally:
+        process.stop(timeout=5)
+    assert registry.is_running("pack-1") is False
 
 
 # -- prepare_server (respx-mocked ağ, gerçek dosya işlemleri) ------------------

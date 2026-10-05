@@ -42,6 +42,12 @@ class Settings(BaseModel):
     java_path: str = ""
     """Yerel sunucu başlatmak için kullanılacak java yürütülebilir dosyası
     (bkz. server_runtime.py:find_java) — boşsa PATH'teki `java` kullanılır."""
+    web_panel_port: int = 8765
+    web_panel_password: str = ""
+    """Web paneli (bkz. webpanel/app.py) BOŞSA ağa (0.0.0.0) AÇILMAZ,
+    otomatik olarak sadece 127.0.0.1'e düşer — kullanıcı şifre koymadan
+    ağdaki herkese açık, korumasız bir panel YAYINLANAMAZ (bkz.
+    webpanel/app.py docstring'i)."""
     packs_dir: str = ""
     """Boşsa default_packs_dir() kullanılır."""
     exclude_logs: bool = True

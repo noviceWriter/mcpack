@@ -519,6 +519,12 @@ class ServerProcess(QObject):
         self.buffer: deque[str] = deque(maxlen=CONSOLE_BUFFER_LINES)
         self._waiters_lock = threading.Lock()
         self._waiters: list[_Waiter] = []
+        self._listeners_lock = threading.Lock()
+        self._listeners: list[Callable[[str | None], None]] = []
+        """Qt Signal'den BAĞIMSIZ, düz Python callback'ler — web paneli
+        (bkz. webpanel/app.py) Qt event loop'una ihtiyaç duymadan canlı
+        satır akışına böyle abone olur. output_line Signal'i ile AYNI
+        anda, _read_output içinden çağrılır (bkz. aşağı)."""
 
     @property
     def is_running(self) -> bool:
@@ -548,8 +554,10 @@ class ServerProcess(QObject):
             self.buffer.append(line)
             self.output_line.emit(line)
             self._notify_waiters(line)
+            self._notify_listeners(line)
         returncode = process.wait()
         self.process_exited.emit(returncode)
+        self._notify_listeners(None)  # akışın bittiğini düz-Python dinleyicilere bildir
 
     def _notify_waiters(self, line: str) -> None:
         with self._waiters_lock:
@@ -559,6 +567,24 @@ class ServerProcess(QObject):
         for w in matched:
             w.result = line
             w.event.set()
+
+    def _notify_listeners(self, line: str | None) -> None:
+        with self._listeners_lock:
+            listeners = list(self._listeners)
+        for callback in listeners:
+            try:
+                callback(line)
+            except Exception:  # noqa: BLE001 - bir dinleyicinin hatası okuyucu thread'i düşürmesin
+                pass
+
+    def add_listener(self, callback: Callable[[str | None], None]) -> None:
+        with self._listeners_lock:
+            self._listeners.append(callback)
+
+    def remove_listener(self, callback: Callable[[str | None], None]) -> None:
+        with self._listeners_lock:
+            if callback in self._listeners:
+                self._listeners.remove(callback)
 
     def send_command(self, text: str) -> None:
         if not self.is_running or self._process is None or self._process.stdin is None:
@@ -605,3 +631,36 @@ class ServerProcess(QObject):
             self._process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self._process.terminate()
+
+
+class ServerProcessRegistry:
+    """pack.id -> ServerProcess eşlemesini thread-safe tutar — hem Qt
+    (gui/main_window.py) hem web paneli (webpanel/app.py, ayrı bir
+    thread'de uvicorn üzerinde çalışır) AYNI nesneyi paylaşır, böylece
+    biri sunucuyu başlatınca diğeri de "çalışıyor" görür (tek kaynak,
+    aynı process içinde — IPC gerekmez, bkz. main.py)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._processes: dict[str, ServerProcess] = {}
+
+    def get(self, pack_id: str) -> ServerProcess | None:
+        with self._lock:
+            return self._processes.get(pack_id)
+
+    def set(self, pack_id: str, process: ServerProcess) -> None:
+        with self._lock:
+            self._processes[pack_id] = process
+
+    def pop(self, pack_id: str) -> ServerProcess | None:
+        with self._lock:
+            return self._processes.pop(pack_id, None)
+
+    def is_running(self, pack_id: str) -> bool:
+        process = self.get(pack_id)
+        return process is not None and process.is_running
+
+    def all_running_ids(self) -> list[str]:
+        with self._lock:
+            items = list(self._processes.items())
+        return [pid for pid, p in items if p.is_running]

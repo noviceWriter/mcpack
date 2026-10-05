@@ -190,6 +190,26 @@ hiç gitmeden çalıştırır:
 mcpack kapatılırken hâlâ çalışan bir sunucu varsa, önce düzgünce
 durdurulsun mu diye sorulur (sessizce öksüz bırakmaz).
 
+### 4.5 Web Paneli (tarayıcıdan sunucu yönetimi)
+
+Araç çubuğundaki **"🌐 Web Paneli"** butonu, 4.4'teki sunucu yönetiminin
+AYNISINI (hazırla/kur/başlat/durdur/konsol/oyuncular/ayarlar) bir
+tarayıcı sekmesinde, daha modern bir arayüzle sunar — Qt'nin yerini almaz,
+sadece ek bir önyüzdür. Tekrar tıklayınca kapanır (**kullanıcı isterse
+tamamen kapatabilir** — açık bir ağ portu istemiyorsanız hiç başlatmayın).
+
+**Güvenlik — mutlaka okuyun:**
+- Ayarlar'da **Web Paneli Şifresi** BOŞSA panel SADECE bu bilgisayardan
+  açılabilir (`127.0.0.1`) — ağa hiç çıkmaz.
+- Bir şifre girerseniz panel **aynı ağdaki diğer cihazlardan da**
+  (telefonunuz, aynı WiFi'daki başka bir bilgisayar) erişilebilir hale
+  gelir — buton bu durumda size gerçek yerel ağ adresinizi gösterir.
+  Şifre girmeden ağa açık bir panel ASLA yayınlanmaz — aksi halde aynı
+  ağdaki herkes (misafir WiFi'ı, güvenilmeyen biri) hiçbir onay sormadan
+  sunucunuzu durdurabilir ya da oyuncu öldürebilirdi.
+- Şifreyle giriş yapılınca tarayıcıda bir oturum çerezi tutulur; "Ayarlar
+  > Port" ile hangi port kullanılacağını da değiştirebilirsiniz.
+
 ## 5. Ayarlar
 
 Sağ üstteki **⚙ Ayarlar**'dan:
@@ -200,8 +220,8 @@ Sağ üstteki **⚙ Ayarlar**'dan:
 - **Modrinth tercihi**: aynı mod iki kaynakta da varsa hangisinin tercih
   edileceği.
 - **SKLauncher yolu**, **Java yolu** (bkz. 4.4 — boşsa PATH'teki `java`
-  kullanılır), **export'ta hariç tutulacak klasörler** (logs,
-  crash-reports, saves).
+  kullanılır), **Web Paneli Şifresi/Port** (bkz. 4.5), **export'ta hariç
+  tutulacak klasörler** (logs, crash-reports, saves).
 
 ## 6. Sık Sorulan Sorular
 

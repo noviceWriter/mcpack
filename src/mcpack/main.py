@@ -8,7 +8,9 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from mcpack.config import Settings
 from mcpack.gui.main_window import MainWindow
+from mcpack.i18n import set_language
 
 
 def _icon_path() -> Path:
@@ -22,6 +24,7 @@ def _icon_path() -> Path:
 
 
 def main() -> None:
+    set_language(Settings.load().language)
     app = QApplication(sys.argv)
     icon_path = _icon_path()
     if icon_path.exists():

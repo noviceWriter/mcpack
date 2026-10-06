@@ -41,6 +41,7 @@ from pydantic import BaseModel
 from mcpack.config import Settings
 from mcpack.downloader import make_client
 from mcpack.export.server import filter_server_mods
+from mcpack.i18n import get_language, strings_with_prefix, t
 from mcpack.models import ContentKind, Pack
 from mcpack.packs.manager import PackManager
 from mcpack.server_properties import KNOWN_PROPERTIES, merged_with_defaults, read_properties, write_properties
@@ -121,13 +122,13 @@ def _load_pack_or_404(manager: PackManager, pack_id: str) -> Pack:
     try:
         return manager.load(pack_id)
     except Exception as exc:  # noqa: BLE001 - bozuk/eksik pack.json da 404 sayılır
-        raise HTTPException(status_code=404, detail="Pack bulunamadı.") from exc
+        raise HTTPException(status_code=404, detail=t("webpanel.error.pack_not_found")) from exc
 
 
 def _running_process_or_400(registry: ServerProcessRegistry, pack_id: str) -> ServerProcess:
     process = registry.get(pack_id)
     if process is None or not process.is_running:
-        raise HTTPException(status_code=400, detail="Sunucu çalışmıyor.")
+        raise HTTPException(status_code=400, detail=t("webpanel.error.server_not_running"))
     return process
 
 
@@ -140,7 +141,7 @@ async def require_auth(request: Request) -> None:
         return
     token = request.cookies.get(SESSION_COOKIE)
     if not token or token not in request.app.state.sessions:
-        raise HTTPException(status_code=401, detail="Giriş gerekli.")
+        raise HTTPException(status_code=401, detail=t("webpanel.error.login_required"))
 
 
 # -- FastAPI app --------------------------------------------------------------
@@ -156,6 +157,15 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
 
     auth_dep = Depends(require_auth)
 
+    # -- dil / çeviri ---------------------------------------------------------
+
+    @app.get("/api/strings")
+    async def strings() -> dict:
+        """Kimlik doğrulama GEREKTİRMEZ (login ekranı da çevrilmeli) — frontend
+        kendi çeviri tablosunu TUTMAZ, mcpack.i18n.STRINGS'in webpanel.*
+        alt kümesini burada alır (bkz. mcpack/i18n.py:strings_with_prefix)."""
+        return {"lang": get_language(), "strings": strings_with_prefix("webpanel.")}
+
     # -- kimlik doğrulama ---------------------------------------------------
 
     @app.get("/api/auth/status")
@@ -169,7 +179,7 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
     async def login(body: LoginRequest, request: Request, response: Response) -> dict:
         password = request.app.state.password
         if not password or not secrets.compare_digest(body.password, password):
-            raise HTTPException(status_code=401, detail="Şifre yanlış.")
+            raise HTTPException(status_code=401, detail=t("webpanel.error.wrong_password"))
         token = secrets.token_urlsafe(32)
         request.app.state.sessions.add(token)
         response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30)
@@ -263,10 +273,10 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
         server_root = mgr.server_root(pack)
         installer = find_installer_jar(server_root)
         if installer is None:
-            raise HTTPException(status_code=400, detail="Kurulum dosyası bulunamadı — önce Hazırla.")
+            raise HTTPException(status_code=400, detail=t("webpanel.error.installer_not_found"))
         java_path = find_java(settings_obj.java_path)
         if java_path is None:
-            raise HTTPException(status_code=400, detail="Java bulunamadı. Ayarlar'dan Java yolunu belirtin.")
+            raise HTTPException(status_code=400, detail=t("webpanel.error.java_not_found"))
         try:
             lines = await run_installer(installer, server_root, java_path)
         except ServerRuntimeError as exc:
@@ -281,18 +291,16 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
         pack = _load_pack_or_404(mgr, pack_id)
 
         if not pack.server.eula_accepted:
-            raise HTTPException(status_code=400, detail="EULA kabul edilmeden sunucu başlatılamaz.")
+            raise HTTPException(status_code=400, detail=t("webpanel.error.eula_required"))
         if reg.is_running(pack.id):
-            raise HTTPException(status_code=400, detail="Sunucu zaten çalışıyor.")
+            raise HTTPException(status_code=400, detail=t("webpanel.error.server_already_running"))
 
         server_root = mgr.server_root(pack)
         if server_state(server_root) != "ready":
-            raise HTTPException(
-                status_code=400, detail="Sunucu hazır değil — önce Hazırla (ve gerekiyorsa Kur)."
-            )
+            raise HTTPException(status_code=400, detail=t("webpanel.error.server_not_ready"))
         java_path = find_java(settings_obj.java_path)
         if java_path is None:
-            raise HTTPException(status_code=400, detail="Java bulunamadı. Ayarlar'dan Java yolunu belirtin.")
+            raise HTTPException(status_code=400, detail=t("webpanel.error.java_not_found"))
 
         try:
             cmd = build_launch_command(
@@ -344,7 +352,10 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
         return {
             "values": merged_with_defaults(read_properties(path)),
             "known": [
-                {"key": p.key, "label": p.label, "type": p.type, "default": p.default, "choices": p.choices}
+                # p.label (server_properties.py) KASITLI yok sayılıyor —
+                # Qt tarafındaki gui/server_section.py ile AYNI anahtar
+                # deseni (bkz. i18n.py:serverprop.{key}.label).
+                {"key": p.key, "label": t(f"serverprop.{p.key}.label"), "type": p.type, "default": p.default, "choices": p.choices}
                 for p in KNOWN_PROPERTIES
             ],
         }
@@ -386,7 +397,7 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
             timeout=5,
         )
         if line is None:
-            raise HTTPException(status_code=504, detail="Sunucudan yanıt alınamadı (zaman aşımı).")
+            raise HTTPException(status_code=504, detail=t("webpanel.error.timeout"))
         return {"players": parse_list_response(line) or []}
 
     @app.post("/api/servers/{pack_id}/players/{player}/heal", dependencies=[auth_dep])
@@ -427,7 +438,7 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
             process.send_command_and_wait, inventory_query_command(player), match=_PLAYER_RESPONSE_PATTERN, timeout=5
         )
         if line is None:
-            raise HTTPException(status_code=504, detail="Sunucudan yanıt alınamadı (zaman aşımı).")
+            raise HTTPException(status_code=504, detail=t("webpanel.error.timeout"))
         items = parse_item_list_response(line) or []
         return {
             "items": [
@@ -446,7 +457,7 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
             timeout=5,
         )
         if line is None:
-            raise HTTPException(status_code=504, detail="Sunucudan yanıt alınamadı (zaman aşımı).")
+            raise HTTPException(status_code=504, detail=t("webpanel.error.timeout"))
         items = parse_item_list_response(line) or []
         return {"items": [{"slot": i.slot, "item_id": i.item_id, "count": i.count} for i in items]}
 
@@ -465,7 +476,7 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
         process = reg.get(pack_id)
         await websocket.accept()
         if process is None:
-            await websocket.send_json({"type": "error", "text": "Sunucu bulunamadı."})
+            await websocket.send_json({"type": "error", "text": t("webpanel.error.server_not_found_ws")})
             await websocket.close()
             return
 

@@ -29,6 +29,7 @@ from PySide6.QtCore import QObject, Signal
 from mcpack.downloader import DownloadCancelledError
 from mcpack.export.base import ProgressCallback, collect_world_files, ensure_mods_downloaded
 from mcpack.export.server import ensure_server_file_downloaded, filter_server_mods
+from mcpack.i18n import t
 from mcpack.models import Pack
 from mcpack.server_jar import ServerDownload, ServerDownloadError, get_server_download
 
@@ -168,9 +169,13 @@ async def prepare_server(
         raise
     except (ServerDownloadError, httpx.HTTPError) as exc:
         raise ServerRuntimeError(
-            f"Sunucu dosyası otomatik indirilemedi: {exc}. Minecraft "
-            f"{pack.minecraft} / {pack.loader.value} {pack.loader_version} "
-            "için resmi bir dosya bulunamamış olabilir."
+            t(
+                "runtime.error.server_file_download_failed",
+                exc=exc,
+                minecraft=pack.minecraft,
+                loader=pack.loader.value,
+                loader_version=pack.loader_version,
+            )
         ) from exc
 
     if pack.server.selected_world:
@@ -228,7 +233,9 @@ async def run_installer(installer_path: Path, server_root: Path, java_path: str)
     )
     if process.returncode != 0:
         tail = "\n".join(lines[-20:])
-        raise ServerRuntimeError(f"Kurulum başarısız oldu (çıkış kodu {process.returncode}):\n{tail}")
+        raise ServerRuntimeError(
+            t("runtime.error.install_failed", returncode=process.returncode, tail=tail)
+        )
     return lines
 
 
@@ -356,9 +363,7 @@ def build_launch_command(server_root: Path, memory_mb: int, *, optimized: bool =
             flags += AIKARS_FLAGS
         return ["java", *flags, "-jar", "server.jar", "nogui"]
 
-    raise ServerRuntimeError(
-        "Sunucu çalıştırılabilir değil — önce 'Hazırla' (ve gerekiyorsa 'Kur') yapın."
-    )
+    raise ServerRuntimeError(t("runtime.error.not_runnable"))
 
 
 # -- oyuncu listesi / envanter / aksiyon komutları -----------------------------
@@ -390,10 +395,17 @@ _LIST_RE = re.compile(r"There are \d+ of a max of \d+ players online:\s*(.*)$")
 _ENTITY_DATA_RE = re.compile(r"has the following entity data:\s*(\[.*\])\s*$")
 _ITEM_RE = re.compile(r'Slot:\s*(-?\d+)b,\s*id:\s*"([^"]+)",\s*Count:\s*(\d+)b')
 
-_ARMOR_OFFHAND_LABELS = {
-    100: "Zırh: Çizme", 101: "Zırh: Pantolon", 102: "Zırh: Göğüslük", 103: "Zırh: Kask",
-    -106: "İkinci El",
-}
+def _armor_offhand_labels() -> dict[int, str]:
+    # t() burada FONKSİYON İÇİNDE çağrılır (modül seviyesinde sabit DEĞİL) —
+    # aksi halde bu sözlük import anında, set_language() çağrılmadan ÖNCE
+    # donardı (bkz. i18n.py modül docstring'i).
+    return {
+        100: t("inventory.slot.boots"),
+        101: t("inventory.slot.leggings"),
+        102: t("inventory.slot.chestplate"),
+        103: t("inventory.slot.helmet"),
+        -106: t("inventory.slot.offhand"),
+    }
 
 
 def list_players_command() -> str:
@@ -439,12 +451,13 @@ def categorize_inventory_slot(slot: int) -> str:
     """SADECE Inventory sorgusu (EnderItems değil) için — ana envanter/sıcak
     çubuk/zırh/ikinci el ayrımı. Vanilla'nın sabit Slot numaralandırmasına
     dayanır (proje icadı değil)."""
-    if slot in _ARMOR_OFFHAND_LABELS:
-        return _ARMOR_OFFHAND_LABELS[slot]
+    labels = _armor_offhand_labels()
+    if slot in labels:
+        return labels[slot]
     if 0 <= slot <= 8:
-        return "Sıcak Çubuk"
+        return t("inventory.slot.hotbar")
     if 9 <= slot <= 35:
-        return "Envanter"
+        return t("inventory.slot.main")
     return f"Slot {slot}"
 
 
@@ -532,7 +545,7 @@ class ServerProcess(QObject):
 
     def start(self, cmd: list[str], *, cwd: Path) -> None:
         if self.is_running:
-            raise ServerRuntimeError("Sunucu zaten çalışıyor.")
+            raise ServerRuntimeError(t("runtime.error.already_running"))
         self._process = subprocess.Popen(
             cmd,
             cwd=str(cwd),
@@ -588,7 +601,7 @@ class ServerProcess(QObject):
 
     def send_command(self, text: str) -> None:
         if not self.is_running or self._process is None or self._process.stdin is None:
-            raise ServerRuntimeError("Sunucu çalışmıyor, komut gönderilemedi.")
+            raise ServerRuntimeError(t("runtime.error.not_running_cant_send"))
         self._process.stdin.write(text + "\n")
         self._process.stdin.flush()
 

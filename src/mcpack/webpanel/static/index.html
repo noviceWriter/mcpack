@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="tr">
+<html lang="tr" id="html-root">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>mcpack Web Paneli</title>
+<title id="page-title">mcpack Web Paneli</title>
 <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
 
 <div id="login-screen" class="hidden">
   <div class="login-card">
-    <h1>🖥 mcpack Web Paneli</h1>
-    <p class="sub">Bu panel ağdaki diğer cihazlardan da erişilebilir — şifrenizi girin.</p>
+    <h1 id="login-heading">🖥 mcpack Web Paneli</h1>
+    <p class="sub" id="login-subtitle">Bu panel ağdaki diğer cihazlardan da erişilebilir — şifrenizi girin.</p>
     <div class="login-error" id="login-error"></div>
     <input type="password" id="login-password" placeholder="Şifre" autofocus />
     <button class="primary" id="login-button">Giriş Yap</button>
@@ -61,7 +61,7 @@
         <div class="tab-pane active" id="tab-console">
           <div id="console-toolbar">
             <button id="btn-clear-console">Konsolu Temizle</button>
-            <label class="inline"><input type="checkbox" id="auto-scroll" checked /> Otomatik Kaydır</label>
+            <label class="inline"><input type="checkbox" id="auto-scroll" checked /> <span id="auto-scroll-label">Otomatik Kaydır</span></label>
           </div>
           <div id="console"></div>
           <div id="command-row">
@@ -73,7 +73,7 @@
         <div class="tab-pane" id="tab-players">
           <div id="players-layout">
             <div id="players-list">
-              <div class="meta" style="margin-bottom:8px;">Çevrimiçi Oyuncular</div>
+              <div class="meta" style="margin-bottom:8px;" id="players-online-label">Çevrimiçi Oyuncular</div>
               <div id="players-list-items"></div>
               <button id="btn-refresh-players" style="width:100%; margin-top:8px;">Listeyi Yenile</button>
             </div>
@@ -91,19 +91,19 @@
                 </div>
 
                 <div class="card">
-                  <h3>Envanter (zırh + ikinci el dahil) — salt okunur</h3>
+                  <h3 id="inventory-card-title">Envanter (zırh + ikinci el dahil) — salt okunur</h3>
                   <button id="btn-view-inventory">Envanteri Görüntüle</button>
                   <table class="item-table" id="inventory-table" style="margin-top:10px;">
-                    <thead><tr><th>Bölüm</th><th>Eşya</th><th>Adet</th></tr></thead>
+                    <thead><tr><th id="th-inv-section">Bölüm</th><th id="th-inv-item">Eşya</th><th id="th-inv-count">Adet</th></tr></thead>
                     <tbody></tbody>
                   </table>
                 </div>
 
                 <div class="card">
-                  <h3>Ender Sandığı — salt okunur</h3>
+                  <h3 id="ender-card-title">Ender Sandığı — salt okunur</h3>
                   <button id="btn-view-ender">Ender Sandığını Görüntüle</button>
                   <table class="item-table" id="ender-table" style="margin-top:10px;">
-                    <thead><tr><th>Slot</th><th>Eşya</th><th>Adet</th></tr></thead>
+                    <thead><tr><th id="th-ender-slot">Slot</th><th id="th-ender-item">Eşya</th><th id="th-ender-count">Adet</th></tr></thead>
                     <tbody></tbody>
                   </table>
                 </div>
@@ -114,21 +114,21 @@
 
         <div class="tab-pane" id="tab-settings">
           <div class="card">
-            <h3>Çalışma Ayarları</h3>
+            <h3 id="runtime-settings-title">Çalışma Ayarları</h3>
             <div class="settings-grid">
-              <label for="mem-preset">Bellek (RAM)</label>
+              <label for="mem-preset" id="label-memory">Bellek (RAM)</label>
               <div>
                 <select id="mem-preset"></select>
                 <input type="number" id="mem-custom" class="hidden" style="width:100px; margin-left:8px;" />
               </div>
               <div class="full" id="memory-info"></div>
 
-              <label for="world-select">Dünya</label>
+              <label for="world-select" id="label-world">Dünya</label>
               <select id="world-select"><option value="">(dünya yok)</option></select>
 
-              <label for="optimized-flags">Performans</label>
+              <label for="optimized-flags" id="label-performance">Performans</label>
               <label class="inline" style="display:inline-flex; gap:6px;">
-                <input type="checkbox" id="optimized-flags" /> Performans bayraklarını kullan (Aikar's flags)
+                <input type="checkbox" id="optimized-flags" /> <span id="optimized-flags-label">Performans bayraklarını kullan (Aikar's flags)</span>
               </label>
 
               <div class="full"><button class="primary" id="btn-save-settings">Ayarları Kaydet</button></div>

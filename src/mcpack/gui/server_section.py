@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 from mcpack.export.server import filter_server_mods
 from mcpack.gui.player_panel import PlayerPanel
 from mcpack.gui.theme import danger_color, status_good_color
+from mcpack.i18n import t
 from mcpack.models import ContentKind, Pack
 from mcpack.server_properties import KNOWN_PROPERTIES
 from mcpack.server_runtime import (
@@ -45,19 +46,17 @@ from mcpack.server_runtime import (
     max_safe_server_memory_mb,
 )
 
-EULA_TEXT = (
-    "Yerel bir sunucu çalıştırmak için Mojang'ın Minecraft Son Kullanıcı "
-    "Lisans Sözleşmesi'ni (EULA) kabul etmeniz gerekir:\n\n"
-    "https://www.minecraft.net/eula\n\n"
-    "Kabul ederseniz bu pack için eula.txt içine eula=true yazılacaktır. "
-    "Bu, Mojang/Microsoft adına değil, SİZİN kendi kararınızdır."
-)
 
-_STATE_LABELS: dict[ServerState, str] = {
-    "not_prepared": "Henüz hazırlanmadı",
-    "needs_install": "Kurulum gerekiyor (Forge/NeoForge)",
-    "ready": "Çalıştırmaya hazır",
-}
+def _eula_text() -> str:
+    return t("server.eula_text")
+
+
+def _state_labels() -> dict[ServerState, str]:
+    return {
+        "not_prepared": t("server.state.not_prepared"),
+        "needs_install": t("server.state.needs_install"),
+        "ready": t("server.state.ready"),
+    }
 
 _GB_PRESETS = [1, 2, 3, 4, 6, 8, 10, 12, 16, 24, 32]
 _CUSTOM_MB_DATA = "custom"
@@ -131,7 +130,7 @@ class ServerSection(QWidget):
         status_row = QHBoxLayout()
         self.status_dot = QLabel("●")
         status_row.addWidget(self.status_dot)
-        self.status_label = QLabel("Durduruldu")
+        self.status_label = QLabel(t("server.status.stopped"))
         status_row.addWidget(self.status_label)
         status_row.addSpacing(16)
         self.state_label = QLabel("")
@@ -141,27 +140,27 @@ class ServerSection(QWidget):
         outer.addLayout(status_row)
 
         button_row = QHBoxLayout()
-        self.prepare_button = QPushButton("Hazırla / Güncelle")
+        self.prepare_button = QPushButton(t("server.prepare_button"))
         self.prepare_button.clicked.connect(self.prepare_requested.emit)
         button_row.addWidget(self.prepare_button)
 
-        self.install_button = QPushButton("Kur (installServer)")
+        self.install_button = QPushButton(t("server.install_button"))
         self.install_button.clicked.connect(self.install_requested.emit)
         button_row.addWidget(self.install_button)
 
-        self.start_button = QPushButton("Başlat")
+        self.start_button = QPushButton(t("server.start_button"))
         self.start_button.setObjectName("primary")
         self.start_button.clicked.connect(self._on_start_clicked)
         button_row.addWidget(self.start_button)
 
-        self.stop_button = QPushButton("Durdur")
+        self.stop_button = QPushButton(t("server.stop_button"))
         self.stop_button.setObjectName("danger")
         self.stop_button.clicked.connect(self.stop_requested.emit)
         button_row.addWidget(self.stop_button)
         button_row.addStretch()
         outer.addLayout(button_row)
 
-        self.mods_box = QGroupBox("Modlar (sunucuda çalışacak)")
+        self.mods_box = QGroupBox(t("server.mods_box_title"))
         mods_layout = QVBoxLayout(self.mods_box)
         self.mods_list = QListWidget()
         self.mods_list.setMaximumHeight(130)
@@ -172,26 +171,26 @@ class ServerSection(QWidget):
         mods_layout.addWidget(self.mods_excluded_label)
         outer.addWidget(self.mods_box)
 
-        player_box = QGroupBox("Oyuncular")
+        player_box = QGroupBox(t("server.players_box_title"))
         player_layout = QVBoxLayout(player_box)
         self.player_panel = PlayerPanel()
         player_layout.addWidget(self.player_panel)
         outer.addWidget(player_box)
 
         console_toolbar = QHBoxLayout()
-        clear_console_button = QPushButton("Konsolu Temizle")
+        clear_console_button = QPushButton(t("server.clear_console"))
         clear_console_button.clicked.connect(self.clear_console)
         console_toolbar.addWidget(clear_console_button)
 
         self.console_search_input = QLineEdit()
-        self.console_search_input.setPlaceholderText("Konsolda ara...")
+        self.console_search_input.setPlaceholderText(t("server.console_search_placeholder"))
         self.console_search_input.returnPressed.connect(self._on_console_search)
         console_toolbar.addWidget(self.console_search_input)
-        search_button = QPushButton("Bul")
+        search_button = QPushButton(t("server.find_button"))
         search_button.clicked.connect(self._on_console_search)
         console_toolbar.addWidget(search_button)
 
-        self.auto_scroll_checkbox = QCheckBox("Otomatik Kaydır")
+        self.auto_scroll_checkbox = QCheckBox(t("server.auto_scroll"))
         self.auto_scroll_checkbox.setChecked(True)
         self.auto_scroll_checkbox.toggled.connect(self._on_auto_scroll_toggled)
         console_toolbar.addWidget(self.auto_scroll_checkbox)
@@ -207,17 +206,15 @@ class ServerSection(QWidget):
 
         command_row = QHBoxLayout()
         self.command_input = _CommandLineEdit()
-        self.command_input.setPlaceholderText(
-            "Sunucu komutu yazın (ör. say merhaba, op <isim>) — ↑/↓ ile geçmiş..."
-        )
+        self.command_input.setPlaceholderText(t("server.command_placeholder"))
         self.command_input.returnPressed.connect(self._on_send_clicked)
         command_row.addWidget(self.command_input)
-        send_button = QPushButton("Gönder")
+        send_button = QPushButton(t("server.send_button"))
         send_button.clicked.connect(self._on_send_clicked)
         command_row.addWidget(send_button)
         outer.addLayout(command_row)
 
-        settings_box = QGroupBox("Ayarlar")
+        settings_box = QGroupBox(t("server.settings_box_title"))
         settings_form = QFormLayout(settings_box)
 
         memory_row = QWidget()
@@ -236,7 +233,7 @@ class ServerSection(QWidget):
         ] or [_GB_PRESETS[0]]
         for gb in allowed_presets:
             self.memory_unit_combo.addItem(f"{gb} GB", gb * 1024)
-        self.memory_unit_combo.addItem("Özel (MB)", _CUSTOM_MB_DATA)
+        self.memory_unit_combo.addItem(t("server.memory_custom"), _CUSTOM_MB_DATA)
         self.memory_unit_combo.currentIndexChanged.connect(self._on_memory_unit_changed)
         memory_layout.addWidget(self.memory_unit_combo)
 
@@ -246,7 +243,7 @@ class ServerSection(QWidget):
         self.memory_spin.setSuffix(" MB")
         self.memory_spin.valueChanged.connect(self._emit_settings_changed)
         memory_layout.addWidget(self.memory_spin)
-        settings_form.addRow("Bellek (RAM):", memory_row)
+        settings_form.addRow(t("server.memory_label"), memory_row)
 
         memory_info = QLabel(self._memory_info_text(total_mb, self._max_safe_memory_mb))
         memory_info.setProperty("role", "muted")
@@ -254,16 +251,12 @@ class ServerSection(QWidget):
         settings_form.addRow("", memory_info)
 
         self.world_combo = QComboBox()
-        self.world_combo.addItem("(dünya yok)", None)
+        self.world_combo.addItem(t("server.no_world"), None)
         self.world_combo.currentIndexChanged.connect(self._emit_settings_changed)
-        settings_form.addRow("Dünya:", self.world_combo)
+        settings_form.addRow(t("server.world_label"), self.world_combo)
 
-        self.optimized_checkbox = QCheckBox("Performans bayraklarını kullan (Aikar's flags)")
-        self.optimized_checkbox.setToolTip(
-            "Minecraft sunucu topluluğunda yıllardır bilinen/belgeli bir G1GC JVM bayrak "
-            "seti — GC duraklamalarını azaltır. run.sh/run.bat ile başlayan Forge/NeoForge "
-            "kurulumlarında etkisi yoktur (onlar kendi JVM argümanlarını kullanır)."
-        )
+        self.optimized_checkbox = QCheckBox(t("server.optimized_flags_checkbox"))
+        self.optimized_checkbox.setToolTip(t("server.optimized_flags_tooltip"))
         self.optimized_checkbox.toggled.connect(self._emit_settings_changed)
         settings_form.addRow("", self.optimized_checkbox)
 
@@ -275,8 +268,8 @@ class ServerSection(QWidget):
         for prop in KNOWN_PROPERTIES:
             widget = self._build_property_widget(prop)
             self._property_widgets[prop.key] = widget
-            properties_form.addRow(prop.label + ":", widget)
-        save_properties_button = QPushButton("server.properties'i Kaydet")
+            properties_form.addRow(t(f"serverprop.{prop.key}.label") + ":", widget)
+        save_properties_button = QPushButton(t("server.save_properties_button"))
         save_properties_button.clicked.connect(self._on_save_properties_clicked)
         properties_form.addRow("", save_properties_button)
         outer.addWidget(properties_box)
@@ -288,11 +281,12 @@ class ServerSection(QWidget):
     @staticmethod
     def _memory_info_text(total_mb: int | None, max_safe_mb: int | None) -> str:
         if total_mb is None or max_safe_mb is None:
-            return "Sistem RAM'i tespit edilemedi — üst sınır konmadı, dikkatli seçin."
-        return (
-            f"Sisteminizde toplam ~{total_mb / 1024:.1f} GB RAM var. Sisteminiz donmasın diye "
-            f"sunucuya en fazla ~{max_safe_mb / 1024:.1f} GB ayrılabiliyor (en az "
-            f"{SYSTEM_MEMORY_RESERVE_MB / 1024:.0f} GB size bırakılıyor)."
+            return t("server.memory_info_unknown")
+        return t(
+            "server.memory_info",
+            total_gb=f"{total_mb / 1024:.1f}",
+            max_gb=f"{max_safe_mb / 1024:.1f}",
+            reserve_gb=f"{SYSTEM_MEMORY_RESERVE_MB / 1024:.0f}",
         )
 
     def _on_memory_unit_changed(self) -> None:
@@ -430,7 +424,7 @@ class ServerSection(QWidget):
 
     def _confirm_eula(self) -> bool:
         answer = QMessageBox.question(
-            self, "Minecraft EULA", EULA_TEXT,
+            self, "Minecraft EULA", _eula_text(),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -460,18 +454,16 @@ class ServerSection(QWidget):
         export'ta hem burada aynı eleme mantığı) burada da listelenir."""
         self.mods_list.clear()
         if pack is None:
-            self.mods_box.setTitle("Modlar (sunucuda çalışacak)")
+            self.mods_box.setTitle(t("server.mods_box_title"))
             self.mods_excluded_label.setText("")
             return
         server_mods = filter_server_mods(pack)
-        self.mods_box.setTitle(f"Modlar (sunucuda çalışacak) — {len(server_mods)}")
+        self.mods_box.setTitle(t("server.mods_box_title_with_count", count=len(server_mods)))
         for mod in server_mods:
             self.mods_list.addItem(mod.name or mod.file_name)
         excluded = len(pack.mods) - len(server_mods)
         if excluded > 0:
-            self.mods_excluded_label.setText(
-                f"+ {excluded} istemci-only mod sunucu için hariç tutuldu (ör. Sodium, Iris benzeri)."
-            )
+            self.mods_excluded_label.setText(t("server.mods_excluded_note", count=excluded))
         else:
             self.mods_excluded_label.setText("")
 
@@ -483,7 +475,7 @@ class ServerSection(QWidget):
         self.optimized_checkbox.blockSignals(True)
         try:
             self.world_combo.clear()
-            self.world_combo.addItem("(dünya yok)", None)
+            self.world_combo.addItem(t("server.no_world"), None)
             if pack is not None:
                 for entry in pack.content_of(ContentKind.WORLD):
                     self.world_combo.addItem(entry.name, entry.name)
@@ -500,17 +492,17 @@ class ServerSection(QWidget):
 
     def set_state(self, state: ServerState) -> None:
         self._state = state
-        self.state_label.setText(_STATE_LABELS.get(state, state))
+        self.state_label.setText(_state_labels().get(state, state))
         self._update_button_states()
 
     def set_running(self, running: bool) -> None:
         self._running = running
         if running:
             self.status_dot.setStyleSheet(f"color: {status_good_color()};")
-            self.status_label.setText("Çalışıyor")
+            self.status_label.setText(t("server.status.running"))
         else:
             self.status_dot.setStyleSheet(f"color: {danger_color()};")
-            self.status_label.setText("Durduruldu")
+            self.status_label.setText(t("server.status.stopped"))
         self.player_panel.set_running(running)
         self._update_button_states()
 

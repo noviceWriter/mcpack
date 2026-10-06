@@ -49,6 +49,7 @@ from mcpack.gui.recommended_mods_dialog import RecommendedModsDialog
 from mcpack.gui.settings_dialog import SettingsDialog
 from mcpack.gui.theme import set_active_theme, stylesheet_for
 from mcpack.gui.widgets import run_async
+from mcpack.i18n import t
 from mcpack.launcher import instances_dir_for, launch, prepare_instance
 from mcpack.models import ContentKind, EnvRequirement, ModSourceType, Pack
 from mcpack.packs import PackManager
@@ -155,7 +156,7 @@ class MainWindow(QMainWindow):
         """Ayarlar eskiden sadece menü çubuğunda tek satırlık bir menüydü —
         kullanıcı isteğiyle her zaman görünen, belirgin bir araç çubuğu
         butonuna taşındı (Prism Launcher'daki gibi)."""
-        toolbar = QToolBar("Ana")
+        toolbar = QToolBar(t("mainwindow.toolbar_name"))
         toolbar.setMovable(False)
         toolbar.setContentsMargins(6, 4, 10, 4)
         self.addToolBar(toolbar)
@@ -164,18 +165,16 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
 
-        self.web_panel_button = QPushButton("🌐 Web Paneli")
-        self.web_panel_button.setToolTip(
-            "Sunucu yönetimi için yerel bir web paneli başlatır (kullanıcı isterse kapatabilir)."
-        )
+        self.web_panel_button = QPushButton(t("mainwindow.web_panel_button"))
+        self.web_panel_button.setToolTip(t("mainwindow.web_panel_tooltip"))
         self.web_panel_button.clicked.connect(self.do_toggle_web_panel)
         toolbar.addWidget(self.web_panel_button)
 
-        settings_button = QPushButton("⚙ Ayarlar")
+        settings_button = QPushButton(t("mainwindow.settings_button"))
         settings_button.clicked.connect(self.open_settings_dialog)
         toolbar.addWidget(settings_button)
 
-        data_button = QPushButton("Veri Klasörünü Aç")
+        data_button = QPushButton(t("mainwindow.open_data_folder_button"))
         data_button.clicked.connect(self.open_data_folder)
         toolbar.addWidget(data_button)
 
@@ -184,7 +183,7 @@ class MainWindow(QMainWindow):
         Prism'de de indirme ilerlemesi ayrı bir panel değil, alt durum çubuğundadır."""
         bar = self.statusBar()
 
-        self.status_label = QLabel("Hazır")
+        self.status_label = QLabel(t("mainwindow.status_ready"))
         bar.addWidget(self.status_label, 1)
 
         self.progress_bar = QProgressBar()
@@ -193,7 +192,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         bar.addPermanentWidget(self.progress_bar)
 
-        self.cancel_button = QPushButton("İptal")
+        self.cancel_button = QPushButton(t("common.cancel"))
         self.cancel_button.setObjectName("danger")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel_current_task)
@@ -276,21 +275,19 @@ class MainWindow(QMainWindow):
         if self._web_panel_handle is not None:
             self._web_panel_handle.stop()
             self._web_panel_handle = None
-            self.web_panel_button.setText("🌐 Web Paneli")
-            self.set_status("Web paneli kapatıldı.")
+            self.web_panel_button.setText(t("mainwindow.web_panel_button"))
+            self.set_status(t("mainwindow.web_panel_stopped"))
             return
 
         from mcpack.webpanel import start_web_panel
 
         handle = start_web_panel(manager=self.manager, registry=self._registry, settings=self.settings)
         self._web_panel_handle = handle
-        self.web_panel_button.setText("🌐 Web Panelini Kapat")
+        self.web_panel_button.setText(t("mainwindow.web_panel_close_button"))
         if handle.network_exposed:
-            self.set_status(
-                f"Web paneli AĞA AÇIK: {handle.url} (aynı ağdaki cihazlar şifreyle erişebilir)"
-            )
+            self.set_status(t("mainwindow.web_panel_started_network", url=handle.url))
         else:
-            self.set_status(f"Web paneli başlatıldı (sadece bu bilgisayar): {handle.url}")
+            self.set_status(t("mainwindow.web_panel_started_local", url=handle.url))
         QDesktopServices.openUrl(QUrl(handle.url))
 
     # -- kütüphane / instance sayfaları arası gezinme -------------------------
@@ -323,8 +320,8 @@ class MainWindow(QMainWindow):
         pack = self.manager.load(pack_id)
         answer = QMessageBox.question(
             self,
-            "Pack'i Sil",
-            f"'{pack.name}' pack'i kalıcı olarak silinsin mi?",
+            t("mainwindow.delete_pack_title"),
+            t("mainwindow.delete_pack_confirm", name=pack.name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -392,19 +389,20 @@ class MainWindow(QMainWindow):
         def on_success(result: tuple[Pack, list[str]]) -> None:
             new_pack, failed = result
             self.reload_packs()
-            self.set_status(f"'{new_pack.name}' oluşturuldu.")
+            self.set_status(t("mainwindow.pack_created", name=new_pack.name))
             if failed:
                 QMessageBox.warning(
                     self,
-                    "Bazı Modlar Atlandı",
-                    f"'{new_pack.name}' pack'i oluşturuldu, ama Minecraft {new_pack.minecraft} "
-                    "için uyumlu bir versiyonu bulunamadığından şu modlar YENİ pack'e "
-                    "EKLENMEDİ:\n\n"
-                    + "\n".join(f"• {name}" for name in failed)
-                    + "\n\nBunları elle eklemeyi veya alternatif bir mod aramayı deneyin.",
+                    t("mainwindow.some_mods_skipped_title"),
+                    t(
+                        "mainwindow.some_mods_skipped_body",
+                        name=new_pack.name,
+                        minecraft=new_pack.minecraft,
+                        list="\n".join(f"• {name}" for name in failed),
+                    ),
                 )
 
-        self.set_status(f"'{pack.name}' Minecraft {values['minecraft']}'e uyarlanıyor...")
+        self.set_status(t("mainwindow.fork_in_progress", name=pack.name, minecraft=values["minecraft"]))
         run_async(task, on_success=on_success, on_error=self._on_error)
 
     # -- sunucu yönetimi (başlat/durdur/konsol) ------------------------------
@@ -450,14 +448,14 @@ class MainWindow(QMainWindow):
                 )
 
         def on_success(_result: None) -> None:
-            self.set_status("Sunucu hazırlandı.")
+            self.set_status(t("mainwindow.server_prepared"))
             self._refresh_server_section()
 
         def on_error(message: str) -> None:
             self._on_error(message)
             self._refresh_server_section()
 
-        self.set_status("Sunucu hazırlanıyor (mod + sunucu dosyası indiriliyor)...")
+        self.set_status(t("mainwindow.server_preparing"))
         run_async(task, on_success=on_success, on_error=on_error)
 
     def do_server_install(self) -> None:
@@ -471,11 +469,11 @@ class MainWindow(QMainWindow):
         server_root = self.manager.server_root(pack)
         installer = find_installer_jar(server_root)
         if installer is None:
-            self._on_error("Kurulum dosyası bulunamadı — önce 'Hazırla'yı çalıştırın.")
+            self._on_error(t("mainwindow.error_installer_not_found"))
             return
         java_path = find_java(self.settings.java_path)
         if java_path is None:
-            self._on_error("Java bulunamadı. Ayarlar'dan Java yolunu belirtin ya da PATH'e (java) ekleyin.")
+            self._on_error(t("mainwindow.error_java_not_found"))
             return
 
         async def task() -> list[str]:
@@ -483,14 +481,14 @@ class MainWindow(QMainWindow):
 
         def on_success(lines: list[str]) -> None:
             self.instance_page.server_section.set_console_lines(lines)
-            self.set_status("Kurulum tamamlandı.")
+            self.set_status(t("mainwindow.install_complete"))
             self._refresh_server_section()
 
         def on_error(message: str) -> None:
             self._on_error(message)
             self._refresh_server_section()
 
-        self.set_status("Kuruluyor (java -jar ... --installServer)... bu biraz sürebilir.")
+        self.set_status(t("mainwindow.installing"))
         run_async(task, on_success=on_success, on_error=on_error)
 
     def do_server_eula_accept(self) -> None:
@@ -521,7 +519,7 @@ class MainWindow(QMainWindow):
         current = read_properties(properties_path)
         current.update(values)
         write_properties(properties_path, current)
-        self.set_status("server.properties kaydedildi.")
+        self.set_status(t("mainwindow.properties_saved"))
 
     def do_server_start(self) -> None:
         if not self.current_pack:
@@ -532,17 +530,17 @@ class MainWindow(QMainWindow):
             # eula_accepted_requested'ı emit ediyor — bu sadece bir ek
             # güvence (proje genelindeki "UI'den bağımsız sert kontrol"
             # deseni, bkz. find_missing_dependencies).
-            self._on_error("EULA kabul edilmeden sunucu başlatılamaz.")
+            self._on_error(t("mainwindow.error_eula_not_accepted"))
             return
 
         server_root = self.manager.server_root(pack)
         if server_state(server_root) != "ready":
-            self._on_error("Sunucu çalıştırmaya hazır değil — önce 'Hazırla' (ve gerekiyorsa 'Kur') yapın.")
+            self._on_error(t("mainwindow.error_server_not_ready"))
             return
 
         java_path = find_java(self.settings.java_path)
         if java_path is None:
-            self._on_error("Java bulunamadı. Ayarlar'dan Java yolunu belirtin ya da PATH'e (java) ekleyin.")
+            self._on_error(t("mainwindow.error_java_not_found"))
             return
 
         try:
@@ -579,7 +577,7 @@ class MainWindow(QMainWindow):
             return
 
         self._refresh_server_section()
-        self.set_status(f"'{pack.name}' sunucusu başlatılıyor...")
+        self.set_status(t("mainwindow.server_starting", name=pack.name))
 
         # Java sürümü kontrolü SALT bilgilendirici (proje-amacı.md §6 ruhu:
         # engelleyici olması gerekmeyen kontroller sunucuyu başlatmayı
@@ -592,9 +590,13 @@ class MainWindow(QMainWindow):
         def on_java_checked(major: int | None) -> None:
             if major is not None and major < required:
                 QMessageBox.warning(
-                    self, "Java Sürümü Uyarısı",
-                    f"Tespit edilen Java sürümü: {major}. Minecraft {pack.minecraft} için "
-                    f"Java {required}+ önerilir — sunucu açılışta hata verebilir.",
+                    self, t("mainwindow.java_version_warning_title"),
+                    t(
+                        "mainwindow.java_version_warning_body",
+                        detected=major,
+                        minecraft=pack.minecraft,
+                        required=required,
+                    ),
                 )
 
         run_async(check_java, on_success=on_java_checked, on_error=lambda _m: None)
@@ -612,7 +614,7 @@ class MainWindow(QMainWindow):
         def on_success(_result: None) -> None:
             self._refresh_server_section()
 
-        self.set_status("Sunucu durduruluyor (stop komutu gönderildi)...")
+        self.set_status(t("mainwindow.server_stopping"))
         run_async(task, on_success=on_success, on_error=self._on_error)
 
     def do_server_send_command(self, text: str) -> None:
@@ -674,7 +676,7 @@ class MainWindow(QMainWindow):
 
         def on_success(line: str | None) -> None:
             if line is None:
-                self._on_error(f"{player} için envanter yanıtı alınamadı (zaman aşımı).")
+                self._on_error(t("mainwindow.error_inventory_timeout", player=player))
                 return
             self.instance_page.server_section.player_panel.set_inventory(parse_item_list_response(line) or [])
 
@@ -694,7 +696,7 @@ class MainWindow(QMainWindow):
 
         def on_success(line: str | None) -> None:
             if line is None:
-                self._on_error(f"{player} için ender sandığı yanıtı alınamadı (zaman aşımı).")
+                self._on_error(t("mainwindow.error_ender_chest_timeout", player=player))
                 return
             self.instance_page.server_section.player_panel.set_ender_chest(parse_item_list_response(line) or [])
 
@@ -735,9 +737,9 @@ class MainWindow(QMainWindow):
             return
         self._refresh_server_section()
         if returncode == 0:
-            self.set_status("Sunucu durdu.")
+            self.set_status(t("mainwindow.server_stopped"))
         else:
-            self.set_status(f"Sunucu beklenmedik şekilde kapandı (çıkış kodu {returncode}).")
+            self.set_status(t("mainwindow.server_crashed", returncode=returncode))
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Hiç kapatma engeli yoktu — çalışan bir sunucu varken pencere
@@ -752,10 +754,8 @@ class MainWindow(QMainWindow):
             return
 
         answer = QMessageBox.question(
-            self, "Sunucular Çalışıyor",
-            f"{len(running_ids)} sunucu hâlâ çalışıyor. Kapatmadan önce düzgünce durdurulsun mu?\n\n"
-            "Hayır derseniz süreçler mcpack kapandıktan sonra da ÇALIŞMAYA DEVAM EDER "
-            "(öksüz kalır) — kendiniz durdurmanız gerekir.",
+            self, t("mainwindow.servers_running_title"),
+            t("mainwindow.servers_running_body", count=len(running_ids)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Yes,
         )
@@ -778,7 +778,7 @@ class MainWindow(QMainWindow):
         self.instance_page.show_pack(self.current_pack)
 
     def browse_and_add_world(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Dünya Klasörü Seç")
+        path = QFileDialog.getExistingDirectory(self, t("mainwindow.select_world_folder_title"))
         if not path:
             return
         self.add_world(path)
@@ -794,7 +794,7 @@ class MainWindow(QMainWindow):
         self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
-        self.set_status(f"{entry.name} eklendi.")
+        self.set_status(t("mainwindow.item_added", name=entry.name))
 
     def remove_world(self, name: str) -> None:
         if self.current_pack is None:
@@ -803,7 +803,7 @@ class MainWindow(QMainWindow):
         self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
-        self.set_status(f"{name} kaldırıldı.")
+        self.set_status(t("mainwindow.item_removed_named", name=name))
 
     def remove_content_download(self, kind: ContentKind, project_id: str) -> None:
         if self.current_pack is None:
@@ -812,7 +812,7 @@ class MainWindow(QMainWindow):
         self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
-        self.set_status("Kaldırıldı.")
+        self.set_status(t("common.removed"))
 
     def add_cheat_mod(self, kind: str) -> None:
         """CheatModsSection'ın onay penceresinden ("Sorumluluk Reddi ve
@@ -836,9 +836,9 @@ class MainWindow(QMainWindow):
             file_name, download_url = result
             self.manager.add_cheat_mod(pack, source, file_name, download_url)
             self.instance_page.show_pack(pack)
-            self.set_status(f"{label} eklendi.")
+            self.set_status(t("mainwindow.item_added", name=label))
 
-        self.set_status(f"{label} için Minecraft {pack.minecraft} build'i aranıyor...")
+        self.set_status(t("mainwindow.cheat_mod_searching", label=label, minecraft=pack.minecraft))
         run_async(task, on_success=on_success, on_error=self._on_error)
 
     def remove_cheat_mod(self, project_id: str) -> None:
@@ -846,7 +846,7 @@ class MainWindow(QMainWindow):
             return
         self.manager.remove_mod(self.current_pack, project_id)
         self.instance_page.show_pack(self.current_pack)
-        self.set_status("Kaldırıldı.")
+        self.set_status(t("common.removed"))
 
     def edit_mod_env(self, project_id: str) -> None:
         """CurseForge gibi kaynaklar client/server bilgisini güvenilir vermeyebilir;
@@ -860,13 +860,13 @@ class MainWindow(QMainWindow):
 
         env_values = [e.value for e in EnvRequirement]
         client, ok = QInputDialog.getItem(
-            self, "İstemci Durumu", entry.file_name, env_values,
+            self, t("mainwindow.client_status_title"), entry.file_name, env_values,
             current=env_values.index(entry.env.client.value), editable=False,
         )
         if not ok:
             return
         server, ok = QInputDialog.getItem(
-            self, "Sunucu Durumu", entry.file_name, env_values,
+            self, t("mainwindow.server_status_title"), entry.file_name, env_values,
             current=env_values.index(entry.env.server.value), editable=False,
         )
         if not ok:
@@ -894,7 +894,7 @@ class MainWindow(QMainWindow):
         bir loader gerektirmediği için vanilla pack'ler de bu pencereyi
         açabilir (bkz. ModSearchDialog.is_vanilla)."""
         if not self.current_pack:
-            QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
+            QMessageBox.warning(self, t("common.warning_title"), t("mainwindow.error_select_pack_first"))
             return
 
         if self._mod_search_dialog is not None:
@@ -983,7 +983,7 @@ class MainWindow(QMainWindow):
             finally:
                 await source.aclose()
 
-        self.set_status("Aranıyor..." if offset == 0 else "Daha fazla yükleniyor...")
+        self.set_status(t("mainwindow.searching") if offset == 0 else t("mainwindow.loading_more"))
         run_async(
             task,
             on_success=lambda results: self._on_search_done(results, append=offset > 0),
@@ -993,7 +993,7 @@ class MainWindow(QMainWindow):
     def _on_search_done(self, results: list[SearchResult], *, append: bool) -> None:
         if self._mod_search_dialog is not None and self._mod_search_dialog.search_panel is not None:
             self._mod_search_dialog.search_panel.set_results(results, append=append)
-        self.set_status("Hazır")
+        self.set_status(t("mainwindow.status_ready"))
 
     def do_content_search(self, kind: ContentKind, query: str, source_name: str, offset: int = 0) -> None:
         """do_search'ün shader/datapack/görüntü paketi karşılığı — aynı akış,
@@ -1034,7 +1034,7 @@ class MainWindow(QMainWindow):
             finally:
                 await source.aclose()
 
-        self.set_status("Aranıyor..." if offset == 0 else "Daha fazla yükleniyor...")
+        self.set_status(t("mainwindow.searching") if offset == 0 else t("mainwindow.loading_more"))
         run_async(
             task,
             on_success=lambda results: self._on_content_search_done(kind, results, append=offset > 0),
@@ -1057,7 +1057,7 @@ class MainWindow(QMainWindow):
             )
             if panel is not None:
                 panel.set_results(results, append=append)
-        self.set_status("Hazır")
+        self.set_status(t("mainwindow.status_ready"))
 
     def add_mod(self, result: SearchResult) -> None:
         """Mod ekleme iki aşamalı: önce uyumlu sürümler ağdan çekilir (arka
@@ -1074,7 +1074,7 @@ class MainWindow(QMainWindow):
             # Aynı mod tekrar kurulmasın — kullanıcı zaten eklenmiş olanı
             # işaretli görüyor (bkz. SearchPanel.set_added_project_ids),
             # yine de tıklarsa burada sessizce engelleniyor.
-            self.set_status(f"{result.title} zaten pack'te.")
+            self.set_status(t("mainwindow.already_in_pack", title=result.title))
             return
 
         async def fetch_task() -> tuple[ModDetail, list[ModVersion]]:
@@ -1091,15 +1091,22 @@ class MainWindow(QMainWindow):
         def on_fetched(data: tuple[ModDetail, list[ModVersion]]) -> None:
             detail, versions = data
             if not versions:
-                self._on_error(f"{result.title}: {pack.minecraft}/{pack.loader.value} için uyumlu versiyon yok")
+                self._on_error(
+                    t(
+                        "mainwindow.no_compatible_version",
+                        title=result.title,
+                        minecraft=pack.minecraft,
+                        loader=pack.loader.value,
+                    )
+                )
                 return
             chosen = self._pick_mod_version(result.title, versions)
             if chosen is None:
-                self.set_status("Vazgeçildi.")
+                self.set_status(t("mainwindow.cancelled"))
                 return
             self._add_mod_version(pack, chosen, detail, result.title)
 
-        self.set_status(f"{result.title} için sürümler alınıyor...")
+        self.set_status(t("mainwindow.fetching_versions", title=result.title))
         run_async(fetch_task, on_success=on_fetched, on_error=self._on_error)
 
     def _pick_mod_version(self, title: str, versions: list[ModVersion]) -> ModVersion | None:
@@ -1114,11 +1121,12 @@ class MainWindow(QMainWindow):
         labels = []
         for i, v in enumerate(versions):
             mc_versions = ", ".join(v.game_versions) if v.game_versions else "?"
-            suffix = " — en yeni" if i == 0 else ""
+            suffix = t("mainwindow.latest_suffix") if i == 0 else ""
             labels.append(f"{v.name}  (MC {mc_versions}){suffix}")
 
         label, ok = QInputDialog.getItem(
-            self, "Sürüm Seç", f"'{title}' için bir sürüm seçin:", labels, 0, False,
+            self, t("mainwindow.pick_version_title"), t("mainwindow.pick_version_body", title=title),
+            labels, 0, False,
         )
         if not ok:
             return None
@@ -1148,13 +1156,13 @@ class MainWindow(QMainWindow):
             finally:
                 await source.aclose()
 
-        self.set_status(f"{title} ekleniyor...")
+        self.set_status(t("mainwindow.adding_item", title=title))
         run_async(task, on_success=self._on_mod_added, on_error=self._on_error)
 
     def _on_mod_added(self, result: tuple[list[tuple[ModVersion, ModDetail]], list[str]]) -> None:
         suggestions, failed_deps = result
         self.instance_page.show_pack(self.current_pack)
-        self.set_status("Mod eklendi")
+        self.set_status(t("mainwindow.mod_added"))
         self._refresh_added_markers()
 
         if failed_deps:
@@ -1163,13 +1171,13 @@ class MainWindow(QMainWindow):
             # kök nedeniydi (bkz. resolve_dependencies).
             QMessageBox.warning(
                 self,
-                "Eksik Zorunlu Bağımlılık",
-                "Bu mod için gerekli olan bazı bağımlılıklar otomatik eklenemedi "
-                f"(pack'in {self.current_pack.minecraft}/{self.current_pack.loader.value} "
-                "kombinasyonu için uyumlu bir versiyonları bulunamadı):\n\n"
-                + "\n".join(f"• {name}" for name in failed_deps)
-                + "\n\nBu mod muhtemelen bu bağımlılıklar olmadan çalışmayacaktır — "
-                "elle eklemeyi deneyin ya da uyumlu bir Minecraft/loader versiyonu seçin.",
+                t("mainwindow.missing_required_dependency_title"),
+                t(
+                    "mainwindow.missing_required_dependency_body",
+                    minecraft=self.current_pack.minecraft,
+                    loader=self.current_pack.loader.value,
+                    list="\n".join(f"• {name}" for name in failed_deps),
+                ),
             )
 
         if not suggestions or not self.current_pack:
@@ -1190,7 +1198,7 @@ class MainWindow(QMainWindow):
         pack = self.current_pack
 
         if pack.find_content_download(kind, result.project_id) is not None:
-            self.set_status(f"{result.title} zaten pack'te.")
+            self.set_status(t("mainwindow.already_in_pack", title=result.title))
             return
 
         async def task() -> None:
@@ -1199,12 +1207,14 @@ class MainWindow(QMainWindow):
                 detail = await source.get_project(result.project_id)
                 versions = await source.get_versions(result.project_id, game_version=pack.minecraft)
                 if not versions:
-                    raise RuntimeError(f"{result.title}: {pack.minecraft} için uyumlu versiyon yok")
+                    raise RuntimeError(
+                        t("mainwindow.no_compatible_version_simple", title=result.title, minecraft=pack.minecraft)
+                    )
                 self.manager.add_content_download(pack, kind, versions[0], detail)
             finally:
                 await source.aclose()
 
-        self.set_status(f"{result.title} ekleniyor...")
+        self.set_status(t("mainwindow.adding_item", title=result.title))
         run_async(task, on_success=lambda _: self._on_content_download_added(kind), on_error=self._on_error)
 
     def add_world_download_result(self, result: SearchResult) -> None:
@@ -1218,7 +1228,9 @@ class MainWindow(QMainWindow):
                 detail = await source.get_project(result.project_id)
                 versions = await source.get_versions(result.project_id, game_version=pack.minecraft)
                 if not versions:
-                    raise RuntimeError(f"{result.title}: {pack.minecraft} için uyumlu versiyon yok")
+                    raise RuntimeError(
+                        t("mainwindow.no_compatible_version_simple", title=result.title, minecraft=pack.minecraft)
+                    )
                 async with make_client() as client:
                     await self.manager.add_world_from_download(
                         pack, versions[0], client, detail=detail
@@ -1226,18 +1238,18 @@ class MainWindow(QMainWindow):
             finally:
                 await source.aclose()
 
-        self.set_status(f"{result.title} indiriliyor...")
+        self.set_status(t("mainwindow.downloading_item", title=result.title))
         run_async(task, on_success=self._on_world_download_added, on_error=self._on_error)
 
     def _on_world_download_added(self) -> None:
         self.instance_page.show_pack(self.current_pack)
         if self._mod_search_dialog is not None and self.current_pack is not None:
             self._mod_search_dialog.refresh_content(self.current_pack)
-        self.set_status("Dünya eklendi")
+        self.set_status(t("mainwindow.world_added"))
 
     def _on_content_download_added(self, kind: ContentKind) -> None:
         self.instance_page.show_pack(self.current_pack)
-        self.set_status("Eklendi")
+        self.set_status(t("common.added"))
         self._refresh_added_markers()
 
     def _refresh_added_markers(self) -> None:
@@ -1255,9 +1267,7 @@ class MainWindow(QMainWindow):
     # -- export / server pack / sklauncher -----------------------------------
 
     def _pick_source_dir(self) -> Path:
-        chosen = QFileDialog.getExistingDirectory(
-            self, "Overrides kaynak klasörü (config, kubejs, defaultconfigs, ...)"
-        )
+        chosen = QFileDialog.getExistingDirectory(self, t("mainwindow.pick_source_dir_title"))
         return Path(chosen) if chosen else Path.cwd()
 
     def _begin_cancellable_task(self) -> threading.Event:
@@ -1275,7 +1285,7 @@ class MainWindow(QMainWindow):
     def cancel_current_task(self) -> None:
         if self._cancel_event is not None:
             self._cancel_event.set()
-            self.set_status("İptal ediliyor...")
+            self.set_status(t("mainwindow.cancelling"))
 
     async def _describe_missing_dependencies(self, pack: Pack, missing: list[tuple[str, str]]) -> list[str]:
         """Ham project_id yerine gerçek mod adını göstermek için (ör. "Prism",
@@ -1329,37 +1339,33 @@ class MainWindow(QMainWindow):
             return await self._describe_missing_dependencies(pack, missing)
 
         def on_success(lines: list[str]) -> None:
-            self.set_status("Hazır")
+            self.set_status(t("mainwindow.status_ready"))
             answer = QMessageBox.warning(
                 self,
-                "Eksik Zorunlu Bağımlılıklar",
-                "Bu pack'teki bazı modların gerektirdiği zorunlu bağımlılıklar "
-                "pack'te yok. Bu haliyle export edilirse oyun büyük ihtimalle "
-                "açılışta çökecektir:\n\n"
-                + "\n".join(lines)
-                + "\n\nYine de devam etmek istiyor musunuz?",
+                t("mainwindow.missing_required_deps_title"),
+                t("mainwindow.missing_required_deps_confirm_body", list="\n".join(lines)),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             if answer == QMessageBox.StandardButton.Yes:
                 on_proceed()
 
-        self.set_status("Bağımlılıklar kontrol ediliyor...")
+        self.set_status(t("mainwindow.checking_dependencies"))
         run_async(task, on_success=on_success, on_error=self._on_error)
 
     def check_dependencies(self) -> None:
         """Modlar bölümündeki "Bağımlılıkları Kontrol Et" butonu — export
         beklemeden, istediği zaman elle kontrol edebilsin diye."""
         if not self.current_pack:
-            QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
+            QMessageBox.warning(self, t("common.warning_title"), t("mainwindow.error_select_pack_first"))
             return
         pack = self.current_pack
 
         missing = self.manager.find_missing_dependencies(pack)
         if not missing:
             QMessageBox.information(
-                self, "Bağımlılık Kontrolü",
-                "Sorun yok — pack'teki hiçbir modun bilinen, eksik bir zorunlu bağımlılığı yok.",
+                self, t("mainwindow.dependency_check_title"),
+                t("mainwindow.dependency_check_ok"),
             )
             return
 
@@ -1367,20 +1373,18 @@ class MainWindow(QMainWindow):
             return await self._describe_missing_dependencies(pack, missing)
 
         def on_success(lines: list[str]) -> None:
-            self.set_status("Hazır")
+            self.set_status(t("mainwindow.status_ready"))
             QMessageBox.warning(
-                self, "Eksik Zorunlu Bağımlılıklar",
-                "Şu modların gerektirdiği zorunlu bağımlılıklar pack'te yok — "
-                "bu haliyle export edilirse oyun büyük ihtimalle açılışta çökecektir:\n\n"
-                + "\n".join(lines),
+                self, t("mainwindow.missing_required_deps_title"),
+                t("mainwindow.missing_required_deps_info_body", list="\n".join(lines)),
             )
 
-        self.set_status("Bağımlılıklar kontrol ediliyor...")
+        self.set_status(t("mainwindow.checking_dependencies"))
         run_async(task, on_success=on_success, on_error=self._on_error)
 
     def do_export(self, format_key: str) -> None:
         if not self.current_pack:
-            QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
+            QMessageBox.warning(self, t("common.warning_title"), t("mainwindow.error_select_pack_first"))
             return
         pack = self.current_pack
 
@@ -1388,7 +1392,8 @@ class MainWindow(QMainWindow):
             exporter_cls = _FORMAT_EXPORTERS[format_key]
 
             output_path, _ = QFileDialog.getSaveFileName(
-                self, "Dışa Aktar", f"{pack.name}{exporter_cls.file_extension}", f"*{exporter_cls.file_extension}"
+                self, t("mainwindow.export_dialog_title"), f"{pack.name}{exporter_cls.file_extension}",
+                f"*{exporter_cls.file_extension}"
             )
             if not output_path:
                 return
@@ -1411,13 +1416,13 @@ class MainWindow(QMainWindow):
 
             def on_success(p: Path) -> None:
                 self._end_cancellable_task()
-                self.set_status(f"Tamamlandı: {p}")
+                self.set_status(t("mainwindow.export_done", path=p))
 
             def on_error(message: str) -> None:
                 self._end_cancellable_task()
                 self._on_error(message)
 
-            self.set_status("Dışa aktarılıyor...")
+            self.set_status(t("mainwindow.exporting"))
             run_async(task, on_success=on_success, on_error=on_error)
 
         self._run_if_dependencies_ok(pack, proceed)
@@ -1434,8 +1439,8 @@ class MainWindow(QMainWindow):
 
         answer = QMessageBox.question(
             self,
-            "Dünya Ekle",
-            "Bu pack'e yüklenmiş dünya var. Sunucu paketine bir dünya eklemek ister misiniz?",
+            t("mainwindow.add_world_title"),
+            t("mainwindow.add_world_body"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -1447,15 +1452,15 @@ class MainWindow(QMainWindow):
             name = names[0]
         else:
             name, ok = QInputDialog.getItem(
-                self, "Dünya Seç", "Sunucu paketine eklenecek dünyayı seçin:", names, 0, False
+                self, t("mainwindow.pick_world_title"), t("mainwindow.pick_world_body"), names, 0, False
             )
             if not ok or not name:
                 return None
 
         confirm = QMessageBox.question(
             self,
-            "Dünyayı Onayla",
-            f"'{name}' dünyası pakette \"world\" adıyla dışa aktarılacak. Onaylıyor musunuz?",
+            t("mainwindow.confirm_world_title"),
+            t("mainwindow.confirm_world_body", name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
@@ -1463,14 +1468,16 @@ class MainWindow(QMainWindow):
 
     def do_server_pack(self) -> None:
         if not self.current_pack:
-            QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
+            QMessageBox.warning(self, t("common.warning_title"), t("mainwindow.error_select_pack_first"))
             return
         pack = self.current_pack
 
         def proceed() -> None:
             selected_world = self._ask_server_pack_world(pack)
 
-            output_path, _ = QFileDialog.getSaveFileName(self, "Sunucu Paketi Oluştur", f"{pack.name}-server.zip", "*.zip")
+            output_path, _ = QFileDialog.getSaveFileName(
+                self, t("mainwindow.server_pack_dialog_title"), f"{pack.name}-server.zip", "*.zip"
+            )
             if not output_path:
                 return
             source_dir = self._pick_source_dir()
@@ -1493,14 +1500,14 @@ class MainWindow(QMainWindow):
 
             def on_success(p: Path) -> None:
                 self._end_cancellable_task()
-                self.set_status(f"Sunucu paketi hazır: {p}")
+                self.set_status(t("mainwindow.server_pack_done", path=p))
                 self._warn_if_server_file_missing(p)
 
             def on_error(message: str) -> None:
                 self._end_cancellable_task()
                 self._on_error(message)
 
-            self.set_status("Sunucu paketi oluşturuluyor...")
+            self.set_status(t("mainwindow.server_pack_building"))
             run_async(task, on_success=on_success, on_error=on_error)
 
         self._run_if_dependencies_ok(pack, proceed)
@@ -1522,20 +1529,16 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.warning(
             self,
-            "Sunucu Dosyası Otomatik İndirilemedi",
-            "Sunucu paketi oluşturuldu, ama bu Minecraft/loader kombinasyonu için "
-            "resmi sunucu dosyası otomatik bulunup indirilemedi (ağ hatası ya da "
-            "bu versiyon için resmi bir dosya yayınlanmamış olabilir).\n\n"
-            f"Zip içindeki '{SERVER_FILE_MISSING_NOTICE_NAME}' dosyasında detay ve "
-            "elle indirme talimatı var.",
+            t("mainwindow.server_file_missing_title"),
+            t("mainwindow.server_file_missing_body", notice_name=SERVER_FILE_MISSING_NOTICE_NAME),
         )
 
     def do_run_sklauncher(self) -> None:
         if not self.current_pack:
-            QMessageBox.warning(self, "Uyarı", "Önce bir pack seçin.")
+            QMessageBox.warning(self, t("common.warning_title"), t("mainwindow.error_select_pack_first"))
             return
         if not self.settings.sklauncher_path:
-            QMessageBox.warning(self, "Uyarı", "Önce Ayarlar'dan SKLauncher yolunu belirleyin.")
+            QMessageBox.warning(self, t("common.warning_title"), t("mainwindow.error_sklauncher_path_missing"))
             return
         pack = self.current_pack
 
@@ -1560,7 +1563,7 @@ class MainWindow(QMainWindow):
 
             def on_success(instance_dir: Path) -> None:
                 self._end_cancellable_task()
-                self.set_status(f"Instance hazır: {instance_dir} — SKLauncher başlatılıyor")
+                self.set_status(t("mainwindow.instance_ready", instance_dir=instance_dir))
                 try:
                     launch(self.settings.sklauncher_path)
                 except Exception as exc:  # noqa: BLE001
@@ -1570,7 +1573,7 @@ class MainWindow(QMainWindow):
                 self._end_cancellable_task()
                 self._on_error(message)
 
-            self.set_status("Instance hazırlanıyor...")
+            self.set_status(t("mainwindow.instance_preparing"))
             run_async(task, on_success=on_success, on_error=on_error)
 
         self._run_if_dependencies_ok(pack, proceed)
@@ -1578,5 +1581,5 @@ class MainWindow(QMainWindow):
     # -- ortak ---------------------------------------------------------------
 
     def _on_error(self, message: str) -> None:
-        QMessageBox.critical(self, "Hata", message)
-        self.set_status("Hata")
+        QMessageBox.critical(self, t("common.error_title"), message)
+        self.set_status(t("common.error_title"))

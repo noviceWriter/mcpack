@@ -9,20 +9,18 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QLabel, QScrollArea, QVBoxLayout, QWidget
 
+from mcpack.i18n import t
 from mcpack.sources.base import ModDetail, ModVersion
 
 
 class RecommendedModsDialog(QDialog):
     def __init__(self, suggestions: list[tuple[ModVersion, ModDetail]], parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Önerilen Modlar")
+        self.setWindowTitle(t("recmods.title"))
         self.resize(420, 420)
 
         layout = QVBoxLayout(self)
-        info = QLabel(
-            "Eklediğin modla uyumlu, opsiyonel (zorunlu olmayan) modlar bulundu. "
-            "İstediklerini işaretleyip ekleyebilirsin:"
-        )
+        info = QLabel(t("recmods.info"))
         info.setWordWrap(True)
         layout.addWidget(info)
 
@@ -43,8 +41,8 @@ class RecommendedModsDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Seçilenleri Ekle")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Atla")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("recmods.add_selected"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("recmods.skip"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

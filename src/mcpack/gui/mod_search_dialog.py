@@ -34,14 +34,17 @@ from PySide6.QtWidgets import (
 )
 
 from mcpack.gui.widgets import SearchPanel
+from mcpack.i18n import t
 from mcpack.models import ContentKind, Loader, Pack
 
-_SEARCHABLE_CONTENT: list[tuple[ContentKind, str, str]] = [
-    # (kind, menü etiketi, arama kutusu placeholder'ı)
-    (ContentKind.SHADERPACK, "Shader", "Shader adı..."),
-    (ContentKind.DATAPACK, "Datapack", "Datapack adı..."),
-    (ContentKind.RESOURCEPACK, "Görüntü paketi", "Görüntü paketi adı..."),
-]
+
+def _searchable_content() -> list[tuple[ContentKind, str]]:
+    # (kind, i18n anahtar öneki — bkz. i18n.py "content.<prefix>.*")
+    return [
+        (ContentKind.SHADERPACK, "content.shader"),
+        (ContentKind.DATAPACK, "content.datapack"),
+        (ContentKind.RESOURCEPACK, "content.resourcepack"),
+    ]
 
 
 class ModSearchDialog(QDialog):
@@ -58,7 +61,7 @@ class ModSearchDialog(QDialog):
         self.pack = pack
         self._initial_kind = initial_kind
         self.is_vanilla = pack.loader == Loader.VANILLA
-        title_prefix = "İçerik Ekle" if self.is_vanilla else "Mod Ekle"
+        title_prefix = t("modsearch.title_content") if self.is_vanilla else t("modsearch.title_mod")
         self.setWindowTitle(f"{title_prefix} — {pack.name}")
         self.resize(900, 680)
 
@@ -68,22 +71,22 @@ class ModSearchDialog(QDialog):
 
         self.search_panel: SearchPanel | None = None
         if not self.is_vanilla:
-            self.content_menu.addItem(QListWidgetItem("Modlar"))
+            self.content_menu.addItem(QListWidgetItem(t("modsearch.menu_mods")))
             self.search_panel = SearchPanel()
             self.pages.addWidget(self.search_panel)
 
         self.content_search_panels: dict[ContentKind, SearchPanel] = {}
         self._installed_content_lists: dict[ContentKind, QListWidget] = {}
         self._kind_rows: dict[ContentKind, int] = {}
-        for kind, label, placeholder in _SEARCHABLE_CONTENT:
+        for kind, key_prefix in _searchable_content():
             self._kind_rows[kind] = self.content_menu.count()
-            self.content_menu.addItem(QListWidgetItem(label))
-            self.pages.addWidget(self._make_content_page(kind, label, placeholder))
+            self.content_menu.addItem(QListWidgetItem(t(f"{key_prefix}.label")))
+            self.pages.addWidget(self._make_content_page(kind, key_prefix))
 
         self._world_list = QListWidget()
         self._world_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._kind_rows[ContentKind.WORLD] = self.content_menu.count()
-        self.content_menu.addItem(QListWidgetItem("Dünya"))
+        self.content_menu.addItem(QListWidgetItem(t("modsearch.menu_world")))
         self.pages.addWidget(self._make_world_page())
 
         self.content_menu.currentRowChanged.connect(self.pages.setCurrentIndex)
@@ -97,7 +100,7 @@ class ModSearchDialog(QDialog):
 
         self.refresh_content(pack)
 
-    def _make_content_page(self, kind: ContentKind, label: str, placeholder: str) -> QWidget:
+    def _make_content_page(self, kind: ContentKind, key_prefix: str) -> QWidget:
         """Shader/datapack/görüntü paketi arama sekmesi — arama sonuçlarının
         altında, o türden zaten eklenmiş olanları gösteren ve kaldırmayı
         sağlayan bir liste var (dünya sekmesindeki aynı desen — daha önce
@@ -107,21 +110,21 @@ class ModSearchDialog(QDialog):
         layout = QVBoxLayout(page)
 
         panel = SearchPanel(
-            title=f"{label} Ara",
-            query_placeholder=placeholder,
-            add_button_text=f"Seçili {label.lower()}i Pack'e Ekle",
+            title=t(f"{key_prefix}.search_title"),
+            query_placeholder=t(f"{key_prefix}.placeholder"),
+            add_button_text=t(f"{key_prefix}.add_button"),
         )
         self.content_search_panels[kind] = panel
         layout.addWidget(panel, 1)
 
-        layout.addWidget(QLabel(f"Eklenmiş {label.lower()}ler:"))
+        layout.addWidget(QLabel(t(f"{key_prefix}.installed_label")))
         installed_list = QListWidget()
         installed_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         installed_list.setMaximumHeight(110)
         self._installed_content_lists[kind] = installed_list
         layout.addWidget(installed_list)
 
-        remove_button = QPushButton(f"Seçili {label.lower()}i kaldır")
+        remove_button = QPushButton(t(f"{key_prefix}.remove_button"))
         remove_button.setObjectName("danger")
         remove_button.clicked.connect(lambda _checked=False, k=kind: self._remove_selected_content(k))
         layout.addWidget(remove_button)
@@ -145,19 +148,19 @@ class ModSearchDialog(QDialog):
         layout = QVBoxLayout(page)
 
         self.world_search_panel = SearchPanel(
-            title="Dünya Ara (CurseForge)",
-            query_placeholder="Dünya/harita adı...",
-            add_button_text="Seçili dünyayı indir ve pack'e ekle",
+            title=t("modsearch.world_search_title"),
+            query_placeholder=t("modsearch.world_placeholder"),
+            add_button_text=t("modsearch.world_add_button"),
             curseforge_only=True,
         )
         layout.addWidget(self.world_search_panel, 1)
 
-        layout.addWidget(QLabel("Yüklü dünyalar:"))
+        layout.addWidget(QLabel(t("modsearch.world_installed_label")))
         layout.addWidget(self._world_list)
         self._world_list.setMaximumHeight(110)
         self._refresh_world_list()
 
-        remove_button = QPushButton("Seçili dünyayı kaldır")
+        remove_button = QPushButton(t("modsearch.world_remove_button"))
         remove_button.setObjectName("danger")
         remove_button.clicked.connect(self._remove_selected_world)
         layout.addWidget(remove_button)

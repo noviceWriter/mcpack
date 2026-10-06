@@ -34,6 +34,7 @@ from mcpack.gui.theme import (
     source_color,
     status_good_color,
 )
+from mcpack.i18n import t
 from mcpack.models import ModEntry, ModSourceType, Pack
 from mcpack.sources.base import SearchResult
 
@@ -157,12 +158,12 @@ def _environment_label(client: str, server: str) -> str:
     client_ok = client != "unsupported"
     server_ok = server != "unsupported"
     if client_ok and server_ok:
-        return "İstemci + Sunucu"
+        return t("env.client_server")
     if client_ok:
-        return "İstemci"
+        return t("env.client")
     if server_ok:
-        return "Sunucu"
-    return "Bilinmiyor"
+        return t("env.server")
+    return t("env.unknown")
 
 
 def _env_badge_widget(client: str, server: str) -> QWidget:
@@ -173,7 +174,7 @@ def _env_badge_widget(client: str, server: str) -> QWidget:
 
     text = _environment_label(client, server)
     chip = QLabel(text)
-    if text == "Bilinmiyor":
+    if text == t("env.unknown"):
         chip.setProperty("role", "muted")
     else:
         chip_bg, chip_text = chip_colors()
@@ -280,7 +281,7 @@ class _ModResultCard(QWidget):
         source_label.setStyleSheet("font-size: 11px;")
         title_row.addWidget(source_label)
 
-        self.added_badge = QLabel("✓ Pack'te")
+        self.added_badge = QLabel(t("mod.already_in_pack"))
         self.added_badge.setStyleSheet(
             f"color: {status_good_color()}; font-weight: 600; font-size: 11px;"
         )
@@ -325,16 +326,29 @@ class SearchPanel(QWidget):
     def __init__(
         self,
         *,
-        title: str = "Mod Ara",
-        query_placeholder: str = "Mod adı...",
-        add_button_text: str = "Seçili Modu Pack'e Ekle",
+        title: str | None = None,
+        query_placeholder: str | None = None,
+        add_button_text: str | None = None,
         curseforge_only: bool = False,
     ) -> None:
         """curseforge_only: Modrinth'te karşılığı olmayan içerik türleri için
         (ör. Dünya/Harita — sadece CurseForge'ta bir proje türü olarak var)
         "Tümü"/"Modrinth" seçenekleri hiç gösterilmez, kaynak sabitçe
-        CurseForge olur."""
+        CurseForge olur.
+
+        title/query_placeholder/add_button_text None bırakılırsa varsayılan
+        (genel mod arama) metinlerine düşer — t() çağrıları burada, __init__
+        GÖVDESİNDE yapılır (fonksiyon imzasında DEĞİL): parametre varsayılan
+        değerleri Python'da modül import edilirken BİR KERE hesaplanır, o an
+        henüz set_language() çağrılmamış olabilir (bkz. main.py:main)."""
         super().__init__()
+        title = title if title is not None else t("search.default_title")
+        query_placeholder = (
+            query_placeholder if query_placeholder is not None else t("search.query_placeholder")
+        )
+        add_button_text = (
+            add_button_text if add_button_text is not None else t("search.add_button")
+        )
         self._results: list[SearchResult] = []
         self._added_project_ids: set[str] = set()
         self._has_more = True
@@ -364,7 +378,7 @@ class SearchPanel(QWidget):
             )
             self.source_combo.setEnabled(False)
         else:
-            self.source_combo.addItem("Tümü (Modrinth + CurseForge)", "both")
+            self.source_combo.addItem(t("search.source_all"), "both")
             # Wurst/Meteor (ModSourceType'a sonradan eklendi) burada YOK —
             # onların search()/get_versions() uygulayan bir ModSource'u yok,
             # kendi API'lerinden ayrı bir akışla eklenirler (bkz.
@@ -375,12 +389,12 @@ class SearchPanel(QWidget):
         row.addWidget(self.source_combo)
 
         self.view_combo = QComboBox()
-        self.view_combo.addItem("Toplu Liste", "all")
-        self.view_combo.addItem("Kategoriye Göre", "category")
+        self.view_combo.addItem(t("search.view_flat"), "all")
+        self.view_combo.addItem(t("search.view_category"), "category")
         self.view_combo.currentIndexChanged.connect(self._refresh_results_view)
         row.addWidget(self.view_combo)
 
-        search_button = QPushButton("Ara")
+        search_button = QPushButton(t("search.button"))
         search_button.setObjectName("primary")
         search_button.clicked.connect(self._on_search_clicked)
         row.addWidget(search_button)
@@ -439,7 +453,7 @@ class SearchPanel(QWidget):
         if self.view_combo.currentData() == "category":
             grouped: dict[str, list[tuple[int, SearchResult]]] = {}
             for index, result in indexed_results:
-                for category in result.categories or ["Diğer"]:
+                for category in result.categories or [t("search.other_category")]:
                     grouped.setdefault(category, []).append((index, result))
             for category, entries in sorted(grouped.items()):
                 header = QListWidgetItem(category.capitalize())

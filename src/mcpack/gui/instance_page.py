@@ -38,6 +38,7 @@ from mcpack.gui.widgets import (
     _mod_name_widget,
     _source_indicator_widget,
 )
+from mcpack.i18n import t
 from mcpack.models import ContentKind, Loader, ModEntry, ModSourceType, Pack
 
 _LOADER_ICONS = {
@@ -54,12 +55,14 @@ _MOD_SORT_KEYS = {
     2: lambda m: _environment_label(m.env.client.value, m.env.server.value),
 }
 
-_CONTENT_SECTIONS: list[tuple[ContentKind, str, str]] = [
+
+def _content_sections() -> list[tuple[ContentKind, str, str]]:
     # (kind, rail etiketi, boş durum ikonu)
-    (ContentKind.SHADERPACK, "✨ Shader Paketleri", "✨"),
-    (ContentKind.RESOURCEPACK, "🖼 Görüntü Paketleri", "🖼"),
-    (ContentKind.DATAPACK, "📦 Datapack'ler", "📦"),
-]
+    return [
+        (ContentKind.SHADERPACK, t("instance.rail.shaderpacks"), "✨"),
+        (ContentKind.RESOURCEPACK, t("instance.rail.resourcepacks"), "🖼"),
+        (ContentKind.DATAPACK, t("instance.rail.datapacks"), "📦"),
+    ]
 
 _CHEAT_MOD_SOURCES = (ModSourceType.WURST, ModSourceType.METEOR)
 
@@ -129,21 +132,21 @@ class ModsSection(QWidget):
 
         options_row = QHBoxLayout()
         self.filter_input = QLineEdit()
-        self.filter_input.setPlaceholderText("Yüklü modlarda ara...")
+        self.filter_input.setPlaceholderText(t("instance.mods_search_placeholder"))
         self.filter_input.textChanged.connect(lambda _: self.show_pack(self._pack))
         options_row.addWidget(self.filter_input, 1)
 
-        self.sort_hint = QLabel("Sıralamak için sütun başlığına tıkla ↓")
+        self.sort_hint = QLabel(t("instance.sort_hint"))
         self.sort_hint.setProperty("role", "muted")
         options_row.addWidget(self.sort_hint)
 
-        self.show_file_names_checkbox = QCheckBox("Dosya adlarını göster")
+        self.show_file_names_checkbox = QCheckBox(t("instance.show_file_names"))
         self.show_file_names_checkbox.toggled.connect(lambda _: self.show_pack(self._pack))
         options_row.addWidget(self.show_file_names_checkbox)
         outer.addLayout(options_row)
 
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Mod", "Kaynak", "Ortam"])
+        self.table.setHorizontalHeaderLabels([t("common.table.mod"), t("common.table.source"), t("common.table.env")])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.horizontalHeader().setSortIndicatorShown(True)
@@ -157,17 +160,14 @@ class ModsSection(QWidget):
         outer.addWidget(self.table, 1)
 
         self.empty_state, empty_cta = _empty_state(
-            "🧩", "Henüz mod eklenmemiş",
-            "Modrinth ve CurseForge'ta arayıp bu pack'e mod ekleyebilirsin.",
-            "+ Mod Ekle",
+            "🧩", t("instance.mods_empty_title"),
+            t("instance.mods_empty_sub"),
+            t("instance.add_mod_button"),
         )
         empty_cta.clicked.connect(self.add_mod_clicked.emit)
         outer.addWidget(self.empty_state, 1)
 
-        self.vanilla_notice = QLabel(
-            "⚠ Vanilla pack'lerde mod eklenemez — mod eklemek için bir loader "
-            "(Fabric/Quilt/Forge/NeoForge) seçerek yeni bir pack oluşturun."
-        )
+        self.vanilla_notice = QLabel(t("instance.vanilla_notice"))
         self.vanilla_notice.setObjectName("warningBox")
         self.vanilla_notice.setWordWrap(True)
         self.vanilla_notice.hide()
@@ -182,21 +182,21 @@ class ModsSection(QWidget):
         self.actions_bar = QWidget()
         button_row = QHBoxLayout(self.actions_bar)
         button_row.setContentsMargins(0, 8, 0, 0)
-        add_button = QPushButton("+ Mod Ekle")
+        add_button = QPushButton(t("instance.add_mod_button"))
         add_button.setObjectName("primary")
         add_button.clicked.connect(self.add_mod_clicked.emit)
         button_row.addWidget(add_button)
 
-        remove_button = QPushButton("Seçili Modu Çıkar")
+        remove_button = QPushButton(t("instance.remove_selected_mod"))
         remove_button.setObjectName("danger")
         remove_button.clicked.connect(self._on_remove_clicked)
         button_row.addWidget(remove_button)
 
-        env_button = QPushButton("İstemci/Sunucu Düzelt")
+        env_button = QPushButton(t("instance.fix_client_server"))
         env_button.clicked.connect(self._on_edit_env_clicked)
         button_row.addWidget(env_button)
 
-        check_deps_button = QPushButton("Bağımlılıkları Kontrol Et")
+        check_deps_button = QPushButton(t("instance.check_dependencies"))
         check_deps_button.clicked.connect(self.check_dependencies_clicked.emit)
         button_row.addWidget(check_deps_button)
         button_row.addStretch()
@@ -263,7 +263,7 @@ class ModsSection(QWidget):
         if not visible_mods:
             query = self.filter_input.text().strip()
             self.table.hide()
-            self.filter_empty_notice.setText(f'"{query}" ile eşleşen mod bulunamadı.')
+            self.filter_empty_notice.setText(t("instance.mods_no_match", query=query))
             self.filter_empty_notice.show()
             return
         self.filter_empty_notice.hide()
@@ -317,7 +317,7 @@ class ContentSection(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
 
         self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["Ad", "Kaynak"])
+        self.table.setHorizontalHeaderLabels([t("common.table.name"), t("common.table.source")])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(1, 140)
         self.table.verticalHeader().setVisible(False)
@@ -327,21 +327,21 @@ class ContentSection(QWidget):
         outer.addWidget(self.table, 1)
 
         self.empty_state, empty_cta = _empty_state(
-            icon, f"Henüz {self._label.lower()} eklenmemiş",
-            "Bir loader gerektirmez, vanilla pack'lere de eklenebilir.",
-            f"+ {self._label} Ekle",
+            icon, t("instance.content_empty_title", label=self._label.lower()),
+            t("instance.content_empty_sub"),
+            t("instance.content_add_button", label=self._label),
         )
         empty_cta.clicked.connect(self.add_requested.emit)
         outer.addWidget(self.empty_state, 1)
 
         button_row = QHBoxLayout()
         button_row.setContentsMargins(0, 8, 0, 0)
-        add_button = QPushButton(f"+ {self._label} Ekle")
+        add_button = QPushButton(t("instance.content_add_button", label=self._label))
         add_button.setObjectName("primary")
         add_button.clicked.connect(self.add_requested.emit)
         button_row.addWidget(add_button)
 
-        remove_button = QPushButton("Seçiliyi Kaldır")
+        remove_button = QPushButton(t("common.remove_selected"))
         remove_button.setObjectName("danger")
         remove_button.clicked.connect(self._on_remove_clicked)
         button_row.addWidget(remove_button)
@@ -390,7 +390,7 @@ class WorldSection(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
 
         self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["Dünya", "Kaynak"])
+        self.table.setHorizontalHeaderLabels([t("instance.world_table_header"), t("common.table.source")])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(1, 140)
         self.table.verticalHeader().setVisible(False)
@@ -400,9 +400,9 @@ class WorldSection(QWidget):
         outer.addWidget(self.table, 1)
 
         self.empty_state, empty_cta = _empty_state(
-            "🌍", "Henüz dünya yüklenmemiş",
-            "Diskinden bir dünya klasörü seçebilir ya da CurseForge'ta hazır bir harita arayabilirsin.",
-            "+ Dünya Klasörü Seç",
+            "🌍", t("instance.world_empty_title"),
+            t("instance.world_empty_sub"),
+            t("instance.world_add_local_button"),
         )
         empty_cta.clicked.connect(self.add_local_requested.emit)
         # _empty_state tek bir CTA için tasarlandı ama dünyada iki farklı
@@ -410,23 +410,23 @@ class WorldSection(QWidget):
         # dünya yokken kullanıcı "CurseForge'ta Ara"yı hiç göremiyordu (alt
         # buton satırı da has_entries=False iken gizli — bkz. show_pack),
         # sadece bir dünya ekledikten SONRA ortaya çıkıyordu.
-        empty_online_cta = QPushButton("+ CurseForge'ta Dünya Ara")
+        empty_online_cta = QPushButton(t("instance.world_add_online_empty_button"))
         empty_online_cta.clicked.connect(self.add_online_requested.emit)
         self.empty_state.layout().addWidget(empty_online_cta, alignment=Qt.AlignmentFlag.AlignCenter)
         outer.addWidget(self.empty_state, 1)
 
         button_row = QHBoxLayout()
         button_row.setContentsMargins(0, 8, 0, 0)
-        add_local_button = QPushButton("+ Dünya Klasörü Seç")
+        add_local_button = QPushButton(t("instance.world_add_local_button"))
         add_local_button.setObjectName("primary")
         add_local_button.clicked.connect(self.add_local_requested.emit)
         button_row.addWidget(add_local_button)
 
-        add_online_button = QPushButton("+ CurseForge'ta Ara")
+        add_online_button = QPushButton(t("instance.world_add_online_button"))
         add_online_button.clicked.connect(self.add_online_requested.emit)
         button_row.addWidget(add_online_button)
 
-        remove_button = QPushButton("Seçili Dünyayı Kaldır")
+        remove_button = QPushButton(t("instance.world_remove_button"))
         remove_button.setObjectName("danger")
         remove_button.clicked.connect(self._on_remove_clicked)
         button_row.addWidget(remove_button)
@@ -446,7 +446,7 @@ class WorldSection(QWidget):
         for row, entry in enumerate(entries):
             name_item = QTableWidgetItem(entry.name)
             self.table.setItem(row, 0, name_item)
-            self.table.setItem(row, 1, QTableWidgetItem("Yerel (diskten)"))
+            self.table.setItem(row, 1, QTableWidgetItem(t("instance.world_source_local")))
         self.table.resizeRowsToContents()
 
     def _on_remove_clicked(self) -> None:
@@ -458,16 +458,8 @@ class WorldSection(QWidget):
             self.remove_requested.emit(item.text())
 
 
-_CHEAT_MOD_DISCLAIMER = (
-    "Wurst Client ve Meteor Client birer \"hile\" (cheat/utility) istemcisidir.\n\n"
-    "• Bu modların kullanımı çoğu sunucunun kurallarına aykırıdır ve hesabınızın/"
-    "karakterinizin o sunucudan banlanmasına yol açabilir.\n"
-    "• Sadece izin verilen sunucularda ya da tek kişilik (singleplayer) "
-    "dünyalarda, kendi sorumluluğunuzda kullanın.\n"
-    "• MC Pack Manager ve geliştiricisi bu modların kullanımından doğacak "
-    "hiçbir sonuçtan sorumlu değildir.\n\n"
-    "Devam ederek bu şartları kabul etmiş olursunuz. İndirmek istiyor musunuz?"
-)
+def _cheat_mod_disclaimer() -> str:
+    return t("instance.cheat_disclaimer")
 
 
 class CheatModsSection(QWidget):
@@ -486,17 +478,13 @@ class CheatModsSection(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
-        warning = QLabel(
-            "⚠ Bu bölüm hile istemcileri içerir. Sunucu kurallarını ihlal edip "
-            "ban ile sonuçlanabilir — sorumluluk size aittir. Detaylar için "
-            "eklerken çıkacak onay penceresini okuyun."
-        )
+        warning = QLabel(t("instance.cheat_warning"))
         warning.setObjectName("warningBox")
         warning.setWordWrap(True)
         outer.addWidget(warning)
 
         self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["Mod", "Kaynak"])
+        self.table.setHorizontalHeaderLabels([t("common.table.mod"), t("common.table.source")])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(1, 140)
         self.table.verticalHeader().setVisible(False)
@@ -506,23 +494,23 @@ class CheatModsSection(QWidget):
         outer.addWidget(self.table, 1)
 
         self.empty_state, _unused_cta = _empty_state(
-            "🎯", "Henüz hile modu eklenmemiş",
-            "Aşağıdaki butonlarla, onay vererek Wurst ya da Meteor Client ekleyebilirsiniz.",
+            "🎯", t("instance.cheat_empty_title"),
+            t("instance.cheat_empty_sub"),
             "",
         )
         _unused_cta.hide()  # tek CTA yeterli değil (iki ayrı mod) — alttaki buton satırı kullanılıyor
         outer.addWidget(self.empty_state, 1)
 
         button_row = QHBoxLayout()
-        wurst_button = QPushButton("+ Wurst Client Ekle")
+        wurst_button = QPushButton(t("instance.add_wurst_button"))
         wurst_button.clicked.connect(lambda: self._confirm_and_request("wurst"))
         button_row.addWidget(wurst_button)
 
-        meteor_button = QPushButton("+ Meteor Client Ekle")
+        meteor_button = QPushButton(t("instance.add_meteor_button"))
         meteor_button.clicked.connect(lambda: self._confirm_and_request("meteor"))
         button_row.addWidget(meteor_button)
 
-        remove_button = QPushButton("Seçiliyi Kaldır")
+        remove_button = QPushButton(t("common.remove_selected"))
         remove_button.setObjectName("danger")
         remove_button.clicked.connect(self._on_remove_clicked)
         button_row.addWidget(remove_button)
@@ -531,7 +519,7 @@ class CheatModsSection(QWidget):
 
     def _confirm_and_request(self, kind: str) -> None:
         answer = QMessageBox.warning(
-            self, "Sorumluluk Reddi ve Onay", _CHEAT_MOD_DISCLAIMER,
+            self, t("instance.cheat_disclaimer_title"), _cheat_mod_disclaimer(),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -580,7 +568,7 @@ class InstancePage(QWidget):
         outer.setSpacing(12)
 
         header = QHBoxLayout()
-        back_button = QPushButton("← Kütüphane")
+        back_button = QPushButton(t("instance.back_button"))
         back_button.clicked.connect(self.back_requested.emit)
         header.addWidget(back_button)
 
@@ -590,7 +578,7 @@ class InstancePage(QWidget):
 
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
-        self.title_label = QLabel("Pack seçilmedi")
+        self.title_label = QLabel(t("instance.no_pack_selected"))
         self.title_label.setStyleSheet("font-size: 18px; font-weight: 700;")
         title_col.addWidget(self.title_label)
         self.subtitle_label = QLabel("")
@@ -605,21 +593,21 @@ class InstancePage(QWidget):
         self.format_combo.addItem("Prism / MultiMC (.zip)", "prism")
         header.addWidget(self.format_combo)
 
-        export_button = QPushButton("Dışa Aktar")
+        export_button = QPushButton(t("instance.export_button"))
         export_button.setObjectName("primary")
         export_button.clicked.connect(lambda: self.export_requested.emit(self.format_combo.currentData()))
         header.addWidget(export_button)
 
-        server_button = QPushButton("Sunucu Paketi")
+        server_button = QPushButton(t("instance.server_pack_button"))
         server_button.clicked.connect(self.server_pack_requested.emit)
         header.addWidget(server_button)
 
-        sklauncher_button = QPushButton("SKLauncher ile Çalıştır")
+        sklauncher_button = QPushButton(t("instance.sklauncher_button"))
         sklauncher_button.clicked.connect(self.run_sklauncher_requested.emit)
         header.addWidget(sklauncher_button)
 
-        fork_button = QPushButton("Başka Sürüme Uyarla")
-        fork_button.setToolTip("Bu pack'i farklı bir Minecraft versiyonu için kopyala (fork)")
+        fork_button = QPushButton(t("instance.fork_button"))
+        fork_button.setToolTip(t("instance.fork_tooltip"))
         fork_button.clicked.connect(self.fork_requested.emit)
         header.addWidget(fork_button)
         outer.addLayout(header)
@@ -637,22 +625,22 @@ class InstancePage(QWidget):
         self.stack = QStackedWidget()
         body.addWidget(self.stack, 1)
 
-        self.rail.addItem(QListWidgetItem("🧩 Modlar"))
+        self.rail.addItem(QListWidgetItem(t("instance.rail.mods")))
         self.mods_section = ModsSection()
         self.stack.addWidget(self.mods_section)
 
         self.content_sections: dict[ContentKind, ContentSection] = {}
-        for kind, label, icon in _CONTENT_SECTIONS:
+        for kind, label, icon in _content_sections():
             self.rail.addItem(QListWidgetItem(label))
             section = ContentSection(kind, label, icon)
             self.content_sections[kind] = section
             self.stack.addWidget(section)
 
-        self.rail.addItem(QListWidgetItem("🌍 Dünyalar"))
+        self.rail.addItem(QListWidgetItem(t("instance.rail.worlds")))
         self.world_section = WorldSection()
         self.stack.addWidget(self.world_section)
 
-        self.rail.addItem(QListWidgetItem("🖥 Sunucu"))
+        self.rail.addItem(QListWidgetItem(t("instance.rail.server")))
         self.server_section = ServerSection()
         self.stack.addWidget(self.server_section)
 
@@ -683,7 +671,7 @@ class InstancePage(QWidget):
         self.cheat_mods_section.show_pack(pack)
 
         if pack is None:
-            self.title_label.setText("Pack seçilmedi")
+            self.title_label.setText(t("instance.no_pack_selected"))
             self.subtitle_label.setText("")
             if self._cheat_rail_item is not None:
                 self.rail.takeItem(self.rail.row(self._cheat_rail_item))
@@ -695,15 +683,24 @@ class InstancePage(QWidget):
         loader_version = f" {pack.loader_version}" if pack.loader_version else ""
         self.title_label.setText(pack.name)
         self.subtitle_label.setText(
-            f"{loader_label}{loader_version}  ·  MC {pack.minecraft}  ·  {len(_regular_mods(pack))} mod"
+            t(
+                "instance.subtitle",
+                loader=f"{loader_label}{loader_version}",
+                minecraft=pack.minecraft,
+                mod_count=len(_regular_mods(pack)),
+            )
         )
         icon = _LOADER_ICONS.get(pack.loader.value, "❓")
         _style_badge(self.icon_badge, icon, loader_color(pack.loader.value))
 
-        rail_labels = ["🧩 Modlar"] + [label for _, label, _ in _CONTENT_SECTIONS] + ["🌍 Dünyalar"]
+        rail_labels = (
+            [t("instance.rail.mods")]
+            + [label for _, label, _ in _content_sections()]
+            + [t("instance.rail.worlds")]
+        )
         counts = (
             [len(_regular_mods(pack))]
-            + [len(pack.content_downloads_of(kind)) for kind, _, _ in _CONTENT_SECTIONS]
+            + [len(pack.content_downloads_of(kind)) for kind, _, _ in _content_sections()]
             + [len(pack.content_of(ContentKind.WORLD))]
         )
         for row, (label, count) in enumerate(zip(rail_labels, counts)):
@@ -717,7 +714,7 @@ class InstancePage(QWidget):
         is_fabric = pack.loader == Loader.FABRIC
         has_cheat_row = self._cheat_rail_item is not None
         if is_fabric and not has_cheat_row:
-            self._cheat_rail_item = QListWidgetItem("🎯 Cheat Modları")
+            self._cheat_rail_item = QListWidgetItem(t("instance.rail.cheat_mods"))
             self.rail.addItem(self._cheat_rail_item)
         elif not is_fabric and has_cheat_row:
             row = self.rail.row(self._cheat_rail_item)
@@ -726,5 +723,6 @@ class InstancePage(QWidget):
 
         if self._cheat_rail_item is not None:
             cheat_count = sum(1 for m in pack.mods if m.source in _CHEAT_MOD_SOURCES)
-            text = f"🎯 Cheat Modları ({cheat_count})" if cheat_count else "🎯 Cheat Modları"
+            label = t("instance.rail.cheat_mods")
+            text = f"{label} ({cheat_count})" if cheat_count else label
             self._cheat_rail_item.setText(text)

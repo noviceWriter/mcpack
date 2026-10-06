@@ -8,6 +8,77 @@ let consoleSocket = null;
 let selectedPlayer = null;
 let commandHistory = [];
 let commandHistoryIndex = 0;
+let STR = {};
+
+// -- i18n -----------------------------------------------------------------
+// Kendi çeviri tablosunu TUTMAZ — mcpack/i18n.py'deki tek STRINGS
+// sözlüğünün webpanel.* alt kümesini /api/strings'den alır (bkz. o
+// dosyadaki modül docstring'i ve strings_with_prefix()).
+
+function t(key, params) {
+  let text = STR[key] || key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      text = text.replace(new RegExp(`\\{${k}\\}`, "g"), v);
+    }
+  }
+  return text;
+}
+
+async function loadStrings() {
+  const resp = await fetch("/api/strings", { credentials: "same-origin" });
+  const data = await resp.json();
+  STR = data.strings || {};
+  document.getElementById("html-root").lang = data.lang || "tr";
+  applyStaticStrings();
+}
+
+function applyStaticStrings() {
+  document.getElementById("page-title").textContent = t("webpanel.app_title");
+  document.getElementById("login-heading").textContent = t("webpanel.app_title");
+  document.getElementById("login-subtitle").textContent = t("webpanel.login.subtitle");
+  document.getElementById("login-password").placeholder = t("webpanel.login.password_placeholder");
+  document.getElementById("login-button").textContent = t("webpanel.login.submit");
+  document.getElementById("empty-state").textContent = t("webpanel.empty_state");
+  document.getElementById("status-pill").textContent = t("webpanel.status.stopped");
+  document.getElementById("btn-prepare").textContent = t("webpanel.btn.prepare");
+  document.getElementById("btn-install").textContent = t("webpanel.btn.install");
+  document.getElementById("btn-start").textContent = t("webpanel.btn.start");
+  document.getElementById("btn-stop").textContent = t("webpanel.btn.stop");
+  document.querySelector('.tab-button[data-tab="console"]').textContent = t("webpanel.tab.console");
+  document.querySelector('.tab-button[data-tab="players"]').textContent = t("webpanel.tab.players");
+  document.querySelector('.tab-button[data-tab="settings"]').textContent = t("webpanel.tab.settings");
+  document.getElementById("btn-clear-console").textContent = t("webpanel.btn.clear_console");
+  document.getElementById("auto-scroll-label").textContent = t("webpanel.label.auto_scroll");
+  document.getElementById("command-input").placeholder = t("webpanel.command_placeholder");
+  document.getElementById("btn-send-command").textContent = t("webpanel.btn.send");
+  document.getElementById("players-online-label").textContent = t("webpanel.players.online_title");
+  document.getElementById("btn-refresh-players").textContent = t("webpanel.btn.refresh_players");
+  document.getElementById("players-empty").textContent = t("webpanel.players.select_prompt");
+  document.getElementById("p-heal").textContent = t("webpanel.btn.heal");
+  document.getElementById("p-kill").textContent = t("webpanel.btn.kill");
+  document.getElementById("p-feed").textContent = t("webpanel.btn.feed");
+  document.getElementById("p-damage").textContent = t("webpanel.btn.damage");
+  document.getElementById("p-hunger").textContent = t("webpanel.btn.hunger");
+  document.getElementById("p-hunger").title = t("webpanel.hunger.tooltip");
+  document.getElementById("inventory-card-title").textContent = t("webpanel.inventory.title");
+  document.getElementById("btn-view-inventory").textContent = t("webpanel.btn.view_inventory");
+  document.getElementById("th-inv-section").textContent = t("webpanel.table.section");
+  document.getElementById("th-inv-item").textContent = t("webpanel.table.item");
+  document.getElementById("th-inv-count").textContent = t("webpanel.table.count");
+  document.getElementById("ender-card-title").textContent = t("webpanel.ender.title");
+  document.getElementById("btn-view-ender").textContent = t("webpanel.btn.view_ender");
+  document.getElementById("th-ender-slot").textContent = t("webpanel.table.slot");
+  document.getElementById("th-ender-item").textContent = t("webpanel.table.item");
+  document.getElementById("th-ender-count").textContent = t("webpanel.table.count");
+  document.getElementById("runtime-settings-title").textContent = t("webpanel.settings.runtime_title");
+  document.getElementById("label-memory").textContent = t("webpanel.settings.memory_label");
+  document.getElementById("label-world").textContent = t("webpanel.settings.world_label");
+  document.getElementById("label-performance").textContent = t("webpanel.settings.performance_label");
+  document.getElementById("optimized-flags-label").textContent = t("webpanel.settings.optimized_flags_label");
+  document.getElementById("btn-save-settings").textContent = t("webpanel.btn.save_settings");
+  document.getElementById("btn-save-properties").textContent = t("webpanel.btn.save_properties");
+}
 
 // -- yardımcılar --------------------------------------------------------------
 
@@ -19,7 +90,7 @@ async function api(path, options = {}) {
   });
   if (resp.status === 401) {
     showLogin();
-    throw new Error("Giriş gerekli");
+    throw new Error(t("webpanel.error.login_required"));
   }
   let data = null;
   try { data = await resp.json(); } catch (e) { /* boş gövde olabilir */ }
@@ -66,8 +137,8 @@ function showApp() {
 async function checkAuthAndStart() {
   const status = await (await fetch("/api/auth/status", { credentials: "same-origin" })).json();
   document.getElementById("network-badge").textContent = status.auth_required
-    ? "🌐 Ağa Açık"
-    : "🔒 Sadece Bu Bilgisayar";
+    ? t("webpanel.badge.network_exposed")
+    : t("webpanel.badge.local_only");
   if (status.auth_required && !status.authenticated) {
     showLogin();
     return;
@@ -90,7 +161,10 @@ async function doLogin() {
     body: JSON.stringify({ password }),
   });
   if (!resp.ok) {
-    document.getElementById("login-error").textContent = "Şifre yanlış.";
+    let data = null;
+    try { data = await resp.json(); } catch (e) { /* boş gövde olabilir */ }
+    document.getElementById("login-error").textContent =
+      (data && data.detail) || t("webpanel.error.wrong_password");
     return;
   }
   document.getElementById("login-error").textContent = "";
@@ -118,7 +192,7 @@ async function loadServers() {
     list.appendChild(row);
   }
   if (servers.length === 0) {
-    list.appendChild(el("div", { class: "meta", text: "Hiç pack yok." }));
+    list.appendChild(el("div", { class: "meta", text: t("webpanel.servers.none") }));
   }
 }
 
@@ -143,7 +217,7 @@ async function refreshServer() {
     `${s.loader}${s.loader_version ? " " + s.loader_version : ""} · MC ${s.minecraft}`;
 
   const pill = document.getElementById("status-pill");
-  pill.textContent = s.running ? "Çalışıyor" : "Durduruldu";
+  pill.textContent = s.running ? t("webpanel.status.running") : t("webpanel.status.stopped");
   pill.className = "status-pill " + (s.running ? "running" : "stopped");
 
   document.getElementById("btn-prepare").disabled = s.running;
@@ -160,7 +234,7 @@ async function refreshServer() {
 }
 
 function renderModsBar(s) {
-  document.getElementById("mods-bar-title").textContent = `Modlar (sunucuda çalışacak): ${s.mods.length}`;
+  document.getElementById("mods-bar-title").textContent = t("webpanel.mods_bar.title", { count: s.mods.length });
   const list = document.getElementById("mods-bar-list");
   list.innerHTML = "";
   for (const mod of s.mods) {
@@ -168,32 +242,29 @@ function renderModsBar(s) {
   }
   const excludedEl = document.getElementById("mods-bar-excluded");
   excludedEl.textContent = s.mods_excluded_count > 0
-    ? `+ ${s.mods_excluded_count} istemci-only mod sunucu için hariç tutuldu.`
+    ? t("webpanel.mods_bar.excluded", { count: s.mods_excluded_count })
     : "";
 }
 
 // -- aksiyon butonları --------------------------------------------------------
 
 document.getElementById("btn-prepare").addEventListener("click", async () => {
-  toast("Hazırlanıyor (mod + sunucu dosyası indiriliyor)...");
+  toast(t("webpanel.toast.preparing"));
   await api(`/api/servers/${currentServerId}/prepare`, { method: "POST" });
-  toast("Hazırlandı.");
+  toast(t("webpanel.toast.prepared"));
   await refreshServer();
 });
 
 document.getElementById("btn-install").addEventListener("click", async () => {
-  toast("Kuruluyor (java -jar ... --installServer)... bu biraz sürebilir.");
+  toast(t("webpanel.toast.installing"));
   await api(`/api/servers/${currentServerId}/install`, { method: "POST" });
-  toast("Kurulum tamamlandı.");
+  toast(t("webpanel.toast.installed"));
   await refreshServer();
 });
 
 document.getElementById("btn-start").addEventListener("click", async () => {
   if (currentServer && !currentServer.eula_accepted) {
-    const ok = confirm(
-      "Yerel bir sunucu çalıştırmak için Mojang'ın Minecraft EULA'sını kabul etmeniz gerekir:\n\n" +
-      "https://www.minecraft.net/eula\n\nKabul ediyor musunuz?"
-    );
+    const ok = confirm(t("webpanel.eula.confirm"));
     if (!ok) return;
     await api(`/api/servers/${currentServerId}/settings`, {
       method: "PUT",
@@ -206,13 +277,13 @@ document.getElementById("btn-start").addEventListener("click", async () => {
     });
   }
   await api(`/api/servers/${currentServerId}/start`, { method: "POST" });
-  toast("Sunucu başlatılıyor...");
+  toast(t("webpanel.toast.starting"));
   await refreshServer();
   connectConsole();
 });
 
 document.getElementById("btn-stop").addEventListener("click", async () => {
-  toast("Sunucu durduruluyor (stop komutu gönderildi)...");
+  toast(t("webpanel.toast.stopping"));
   await api(`/api/servers/${currentServerId}/stop`, { method: "POST" });
   await refreshServer();
 });
@@ -257,7 +328,7 @@ function connectConsole() {
   consoleSocket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "line") appendConsoleLine(msg.text);
-    else if (msg.type === "exited") { appendConsoleLine("[panel] Sunucu süreci kapandı."); refreshServer(); }
+    else if (msg.type === "exited") { appendConsoleLine("[panel] " + t("webpanel.console.process_exited")); refreshServer(); }
     else if (msg.type === "error") appendConsoleLine("[panel] " + msg.text);
   };
 }
@@ -303,7 +374,7 @@ function renderPlayersRunningState(running) {
   document.getElementById("btn-refresh-players").disabled = !running;
   if (!running) {
     document.getElementById("players-list-items").innerHTML = "";
-    document.getElementById("players-empty").textContent = "Oyuncu paneli için sunucu çalışıyor olmalı.";
+    document.getElementById("players-empty").textContent = t("webpanel.players.running_required");
     document.getElementById("players-detail-body").classList.add("hidden");
     selectedPlayer = null;
   }
@@ -324,7 +395,7 @@ async function refreshPlayers() {
     list.appendChild(chip);
   }
   if (data.players.length === 0) {
-    list.appendChild(el("div", { class: "meta", text: "Çevrimiçi oyuncu yok." }));
+    list.appendChild(el("div", { class: "meta", text: t("webpanel.players.none_online") }));
   }
 }
 
@@ -347,13 +418,24 @@ document.getElementById("p-hunger").addEventListener("click", () =>
   playerAction("hunger", { duration_s: Number(document.getElementById("p-hunger-seconds").value) || 30 })
 );
 
+const PLAYER_ACTION_LABEL_KEYS = {
+  heal: "webpanel.btn.heal",
+  kill: "webpanel.btn.kill",
+  feed: "webpanel.btn.feed",
+  damage: "webpanel.btn.damage",
+  hunger: "webpanel.btn.hunger",
+};
+
 async function playerAction(action, body) {
   if (!selectedPlayer) return;
   await api(`/api/servers/${currentServerId}/players/${encodeURIComponent(selectedPlayer)}/${action}`, {
     method: "POST",
     body: JSON.stringify(body || {}),
   });
-  toast(`${selectedPlayer}: ${action} gönderildi.`);
+  toast(t("webpanel.toast.player_action_sent", {
+    player: selectedPlayer,
+    action: t(PLAYER_ACTION_LABEL_KEYS[action] || action),
+  }));
 }
 
 function fillItemTable(tableId, items, withCategory) {
@@ -396,7 +478,7 @@ function renderSettingsForm(s) {
   for (const gb of allowed) {
     presetSelect.appendChild(el("option", { value: String(gb * 1024), text: `${gb} GB` }));
   }
-  presetSelect.appendChild(el("option", { value: "custom", text: "Özel (MB)" }));
+  presetSelect.appendChild(el("option", { value: "custom", text: t("webpanel.memory.custom") }));
 
   const matching = allowed.find((gb) => gb * 1024 === s.memory_mb);
   if (matching) {
@@ -411,13 +493,15 @@ function renderSettingsForm(s) {
 
   document.getElementById("memory-info").textContent =
     s.system_memory_mb == null
-      ? "Sistem RAM'i tespit edilemedi — üst sınır konmadı, dikkatli seçin."
-      : `Sisteminizde toplam ~${(s.system_memory_mb / 1024).toFixed(1)} GB RAM var. Sunucuya en fazla ` +
-        `~${(maxSafe / 1024).toFixed(1)} GB ayrılabiliyor (en az 2 GB size bırakılıyor).`;
+      ? t("webpanel.memory.unknown")
+      : t("webpanel.memory.info", {
+          total_gb: (s.system_memory_mb / 1024).toFixed(1),
+          max_gb: (maxSafe / 1024).toFixed(1),
+        });
 
   const worldSelect = document.getElementById("world-select");
   worldSelect.innerHTML = "";
-  worldSelect.appendChild(el("option", { value: "", text: "(dünya yok)" }));
+  worldSelect.appendChild(el("option", { value: "", text: t("webpanel.world.none") }));
   for (const w of s.worlds) worldSelect.appendChild(el("option", { value: w, text: w }));
   worldSelect.value = s.selected_world || "";
 
@@ -446,7 +530,7 @@ document.getElementById("btn-save-settings").addEventListener("click", async () 
     use_optimized_flags: document.getElementById("optimized-flags").checked,
   };
   await api(`/api/servers/${currentServerId}/settings`, { method: "PUT", body: JSON.stringify(body) });
-  toast("Ayarlar kaydedildi.");
+  toast(t("webpanel.toast.settings_saved"));
   await refreshServer();
 });
 
@@ -488,9 +572,12 @@ document.getElementById("btn-save-properties").addEventListener("click", async (
     values[key] = input.type === "checkbox" ? String(input.checked) : String(input.value);
   }
   await api(`/api/servers/${currentServerId}/properties`, { method: "PUT", body: JSON.stringify({ values }) });
-  toast("server.properties kaydedildi.");
+  toast(t("webpanel.toast.properties_saved"));
 });
 
 // -- başlat ----------------------------------------------------------------
 
-checkAuthAndStart();
+(async () => {
+  await loadStrings();
+  await checkAuthAndStart();
+})();

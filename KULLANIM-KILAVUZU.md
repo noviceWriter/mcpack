@@ -213,6 +213,9 @@ tamamen kapatabilir** — açık bir ağ portu istemiyorsanız hiç başlatmayı
 ## 5. Ayarlar
 
 Sağ üstteki **⚙ Ayarlar**'dan:
+- **Dil**: arayüz dilini Türkçe/İngilizce arasında değiştirir — değişiklik
+  uygulamayı yeniden başlatınca etkili olur. Web Paneli (bkz. 4.5) de AYNI
+  dili otomatik kullanır, ayrıca bir ayara gerek yoktur.
 - **CurseForge API Key**: CurseForge aramasının çalışması için gerekir
   (console.curseforge.com üzerinden kendi hesabınızla alınır). Girdikten
   sonra **Bağlantıyı Test Et** ile gerçekten geçerli olup olmadığını

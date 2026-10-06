@@ -55,6 +55,9 @@ class Settings(BaseModel):
     exclude_saves: bool = True
     theme: str = "dark"
     """Tek desteklenen tema koyudur."""
+    language: str = "tr"
+    """Arayüz dili ("tr" veya "en") — bkz. mcpack.i18n. Değişiklik
+    sadece uygulama yeniden başlatılınca etkili olur."""
 
     def resolved_packs_dir(self) -> Path:
         return Path(self.packs_dir) if self.packs_dir else default_packs_dir()

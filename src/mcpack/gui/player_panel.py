@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mcpack.i18n import t
 from mcpack.server_runtime import InventoryItem, categorize_inventory_slot
 
 
@@ -59,7 +60,7 @@ class PlayerPanel(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
-        self.not_running_label = QLabel("Oyuncu paneli için sunucu çalışıyor olmalı.")
+        self.not_running_label = QLabel(t("player.not_running"))
         self.not_running_label.setProperty("role", "muted")
         outer.addWidget(self.not_running_label)
 
@@ -68,12 +69,12 @@ class PlayerPanel(QWidget):
         body_layout.setContentsMargins(0, 0, 0, 0)
 
         left = QVBoxLayout()
-        left.addWidget(QLabel("Çevrimiçi Oyuncular:"))
+        left.addWidget(QLabel(t("player.online_players")))
         self.player_list = QListWidget()
         self.player_list.setMaximumWidth(180)
         self.player_list.currentTextChanged.connect(self._on_selection_changed)
         left.addWidget(self.player_list)
-        refresh_button = QPushButton("Listeyi Yenile")
+        refresh_button = QPushButton(t("player.refresh_list"))
         refresh_button.clicked.connect(self.refresh_requested.emit)
         left.addWidget(refresh_button)
         body_layout.addLayout(left)
@@ -81,23 +82,23 @@ class PlayerPanel(QWidget):
         right = QVBoxLayout()
 
         actions_row1 = QHBoxLayout()
-        heal_button = QPushButton("İyileştir")
+        heal_button = QPushButton(t("player.heal"))
         heal_button.clicked.connect(lambda: self._emit_if_selected(self.heal_requested))
         actions_row1.addWidget(heal_button)
 
-        kill_button = QPushButton("Öldür")
+        kill_button = QPushButton(t("player.kill"))
         kill_button.setObjectName("danger")
         kill_button.clicked.connect(lambda: self._emit_if_selected(self.kill_requested))
         actions_row1.addWidget(kill_button)
 
-        feed_button = QPushButton("Doyur")
+        feed_button = QPushButton(t("player.feed"))
         feed_button.clicked.connect(lambda: self._emit_if_selected(self.feed_requested))
         actions_row1.addWidget(feed_button)
         actions_row1.addStretch()
         right.addLayout(actions_row1)
 
         damage_row = QHBoxLayout()
-        damage_button = QPushButton("Hasar Ver")
+        damage_button = QPushButton(t("player.damage"))
         self.damage_spin = QSpinBox()
         self.damage_spin.setRange(1, 1000)
         self.damage_spin.setValue(4)
@@ -111,15 +112,12 @@ class PlayerPanel(QWidget):
         right.addLayout(damage_row)
 
         hunger_row = QHBoxLayout()
-        hunger_button = QPushButton("Açlığı Azalt")
-        hunger_button.setToolTip(
-            "Vanilla Minecraft'ta açlığı ANINDA belirli bir değere ayarlamanın bir yolu yok — "
-            "bu, oyuncuyu seçilen süre boyunca normalden daha hızlı acıktırır (yaklaşık bir etkidir)."
-        )
+        hunger_button = QPushButton(t("player.reduce_hunger"))
+        hunger_button.setToolTip(t("player.reduce_hunger_tooltip"))
         self.hunger_spin = QSpinBox()
         self.hunger_spin.setRange(5, 300)
         self.hunger_spin.setValue(30)
-        self.hunger_spin.setSuffix(" sn")
+        self.hunger_spin.setSuffix(t("player.seconds_suffix"))
         hunger_button.clicked.connect(
             lambda: self._emit_if_selected_with_int(self.hunger_requested, self.hunger_spin.value())
         )
@@ -128,21 +126,25 @@ class PlayerPanel(QWidget):
         hunger_row.addStretch()
         right.addLayout(hunger_row)
 
-        inventory_box = QGroupBox("Envanter (zırh + ikinci el dahil) — salt okunur")
+        inventory_box = QGroupBox(t("player.inventory_box_title"))
         inventory_layout = QVBoxLayout(inventory_box)
-        view_inventory_button = QPushButton("Envanteri Görüntüle")
+        view_inventory_button = QPushButton(t("player.view_inventory"))
         view_inventory_button.clicked.connect(lambda: self._emit_if_selected(self.inventory_requested))
         inventory_layout.addWidget(view_inventory_button)
-        self.inventory_table = _item_table(["Bölüm", "Eşya", "Adet"])
+        self.inventory_table = _item_table(
+            [t("player.table.section"), t("player.table.item"), t("player.table.count")]
+        )
         inventory_layout.addWidget(self.inventory_table)
         right.addWidget(inventory_box)
 
-        ender_box = QGroupBox("Ender Sandığı — salt okunur")
+        ender_box = QGroupBox(t("player.ender_chest_box_title"))
         ender_layout = QVBoxLayout(ender_box)
-        view_ender_button = QPushButton("Ender Sandığını Görüntüle")
+        view_ender_button = QPushButton(t("player.view_ender_chest"))
         view_ender_button.clicked.connect(lambda: self._emit_if_selected(self.ender_chest_requested))
         ender_layout.addWidget(view_ender_button)
-        self.ender_table = _item_table(["Slot", "Eşya", "Adet"])
+        self.ender_table = _item_table(
+            [t("player.table.slot"), t("player.table.item"), t("player.table.count")]
+        )
         ender_layout.addWidget(self.ender_table)
         right.addWidget(ender_box)
 

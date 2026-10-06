@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from mcpack.gui.theme import DARK_PALETTE, chip_colors, loader_color
 from mcpack.gui.widgets import _badge_label
+from mcpack.i18n import t
 from mcpack.models import Pack
 
 _LOADER_ICONS = {
@@ -75,18 +76,18 @@ class _InstanceRow(QFrame):
 
         content_count = len(pack.content_downloads) + len(pack.content)
         if content_count:
-            content_chip = self._chip(f"{content_count} içerik")
+            content_chip = self._chip(t("library.content_count_chip", count=content_count))
             layout.addWidget(content_chip)
 
-        mod_chip = self._chip(f"{len(pack.mods)} mod")
+        mod_chip = self._chip(t("library.mod_count_chip", count=len(pack.mods)))
         layout.addWidget(mod_chip)
 
-        open_button = QPushButton("Aç")
+        open_button = QPushButton(t("library.open_button"))
         open_button.setObjectName("primary")
         open_button.clicked.connect(self.opened.emit)
         layout.addWidget(open_button)
 
-        delete_button = QPushButton("Sil")
+        delete_button = QPushButton(t("library.delete_button"))
         delete_button.setObjectName("danger")
         delete_button.clicked.connect(self.delete_requested.emit)
         layout.addWidget(delete_button)
@@ -122,18 +123,18 @@ class LibraryPage(QWidget):
         outer.setSpacing(12)
 
         header = QHBoxLayout()
-        title = QLabel("Pack'lerim")
+        title = QLabel(t("library.title"))
         title.setStyleSheet("font-size: 20px; font-weight: 700;")
         header.addWidget(title)
         header.addStretch()
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Pack ara...")
+        self.search_input.setPlaceholderText(t("library.search_placeholder"))
         self.search_input.setFixedWidth(240)
         self.search_input.textChanged.connect(self._refresh_rows)
         header.addWidget(self.search_input)
 
-        new_button = QPushButton("+ Yeni Pack")
+        new_button = QPushButton(t("library.new_pack_button"))
         new_button.setObjectName("primary")
         new_button.clicked.connect(self.new_pack_requested.emit)
         header.addWidget(new_button)
@@ -159,11 +160,11 @@ class LibraryPage(QWidget):
         empty_icon.setStyleSheet("font-size: 40px;")
         empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(empty_icon)
-        empty_title = QLabel("Henüz hiç pack yok")
+        empty_title = QLabel(t("library.empty_title"))
         empty_title.setStyleSheet("font-size: 16px; font-weight: 600;")
         empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(empty_title)
-        empty_sub = QLabel('"+ Yeni Pack" ile ilk pack\'ini oluştur.')
+        empty_sub = QLabel(t("library.empty_subtitle"))
         empty_sub.setProperty("role", "muted")
         empty_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(empty_sub)

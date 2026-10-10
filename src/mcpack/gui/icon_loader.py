@@ -10,7 +10,7 @@ from collections.abc import Callable
 
 import shiboken6
 from PySide6.QtCore import QObject, Qt, QThread, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QPixmap
 
 from mcpack.downloader import make_client
 
@@ -33,10 +33,6 @@ def _cache_get(url: str) -> QPixmap | None:
 
 
 def _cache_put(url: str, pixmap: QPixmap) -> None:
-    if pixmap.width() > _MAX_ICON_DIM or pixmap.height() > _MAX_ICON_DIM:
-        pixmap = pixmap.scaled(
-            _MAX_ICON_DIM, _MAX_ICON_DIM, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-        )
     _cache[url] = pixmap
     _cache.move_to_end(url)
     while len(_cache) > _MAX_CACHE_SIZE:
@@ -44,7 +40,11 @@ def _cache_put(url: str, pixmap: QPixmap) -> None:
 
 
 class _IconSignals(QObject):
-    loaded = Signal(str, QPixmap)
+    loaded = Signal(str, QImage)
+    """QPixmap DEĞİL QImage: QPixmap sadece GUI thread'inde oluşturulabilir;
+    worker thread'de oluşturmak heap bozulmasıyla rastgele çökmeye yol açıyordu
+    ("malloc(): unaligned tcache chunk detected"). QImage thread-safe'tir,
+    QPixmap'e dönüşüm on_loaded'da (GUI thread) yapılır."""
 
 
 class _IconWorker(QThread):
@@ -65,9 +65,16 @@ class _IconWorker(QThread):
 
         data = asyncio.run(fetch())
         if data:
-            pixmap = QPixmap()
-            if pixmap.loadFromData(data):
-                self.signals.loaded.emit(self.url, pixmap)
+            image = QImage()
+            if image.loadFromData(data):
+                if image.width() > _MAX_ICON_DIM or image.height() > _MAX_ICON_DIM:
+                    image = image.scaled(
+                        _MAX_ICON_DIM,
+                        _MAX_ICON_DIM,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                self.signals.loaded.emit(self.url, image)
 
 
 def load_icon(
@@ -97,7 +104,8 @@ def load_icon(
     worker = _IconWorker(url)
     _active.append(worker)
 
-    def on_loaded(loaded_url: str, pixmap: QPixmap) -> None:
+    def on_loaded(loaded_url: str, image: QImage) -> None:
+        pixmap = QPixmap.fromImage(image)
         _cache_put(loaded_url, pixmap)
         if owner is not None and not shiboken6.isValid(owner):
             return
@@ -107,6 +115,9 @@ def load_icon(
             pass  # ek güvenlik: owner verilmediyse veya callback başka silinmiş bir widget'a dokunduysa
 
     def cleanup() -> None:
+        # finished, thread tamamen bitmeden yayınlanır; son referansı bırakmadan
+        # önce bekle ki QThread hâlâ çalışırken silinmesin.
+        worker.wait()
         if worker in _active:
             _active.remove(worker)
 

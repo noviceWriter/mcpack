@@ -87,13 +87,17 @@ async def test_get_versions_skips_files_without_download_url():
 
 
 @pytest.mark.asyncio
-async def test_cloudfront_403_gets_specific_turkish_hint():
+async def test_cloudfront_block_page_gets_cdn_hint():
     with respx.mock(base_url=BASE_URL) as mock:
         mock.get("/v1/mods/1").mock(
-            return_value=httpx.Response(403, headers={"x-cache": "Error from cloudfront"})
+            return_value=httpx.Response(
+                403,
+                headers={"x-cache": "Error from cloudfront", "x-amz-cf-id": "abc123"},
+                text="<H1>403 ERROR</H1><H2>The request could not be satisfied.</H2>",
+            )
         )
         client = CurseForgeClient("fake-key")
-        with pytest.raises(SourceAPIError, match="CDN"):
+        with pytest.raises(SourceAPIError, match="CDN.*abc123"):
             await client.get_project("1")
         await client.aclose()
 
@@ -101,8 +105,48 @@ async def test_cloudfront_403_gets_specific_turkish_hint():
 @pytest.mark.asyncio
 async def test_plain_403_gets_api_key_hint():
     with respx.mock(base_url=BASE_URL) as mock:
+        mock.get("/v1/mods/search").mock(return_value=httpx.Response(403))
         mock.get("/v1/mods/1").mock(return_value=httpx.Response(403))
         client = CurseForgeClient("fake-key")
         with pytest.raises(SourceAPIError, match="API key"):
+            await client.get_project("1")
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_empty_cloudfront_403_blames_key_not_cdn():
+    # Origin'in boş 403'ü de "Error from cloudfront" başlığıyla gelir — bu CDN engeli değil.
+    valid_looking = "$2a$10$" + "a" * 53
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.get("/v1/mods/search").mock(return_value=httpx.Response(403))
+        mock.get("/v1/mods/1").mock(
+            return_value=httpx.Response(403, headers={"x-cache": "Error from cloudfront"})
+        )
+        client = CurseForgeClient(valid_looking)
+        with pytest.raises(SourceAPIError, match="iptal edilmiş") as exc_info:
+            await client.get_project("1")
+        assert "CDN" not in str(exc_info.value)
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_malformed_key_gets_format_hint():
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.get("/v1/mods/search").mock(return_value=httpx.Response(403))
+        mock.get("/v1/mods/1").mock(return_value=httpx.Response(403))
+        client = CurseForgeClient("short-key")
+        with pytest.raises(SourceAPIError, match="biçimi beklenene"):
+            await client.get_project("1")
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_restricted_key_reports_missing_permission():
+    # Arama çalışıyor ama mod detayı 403 → key geçerli, yetki kısıtlı.
+    with respx.mock(base_url=BASE_URL) as mock:
+        mock.get("/v1/mods/search").mock(return_value=httpx.Response(200, json={"data": []}))
+        mock.get("/v1/mods/1").mock(return_value=httpx.Response(403))
+        client = CurseForgeClient("fake-key")
+        with pytest.raises(SourceAPIError, match="geçerli.*yetkisi yok"):
             await client.get_project("1")
         await client.aclose()

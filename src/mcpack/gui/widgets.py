@@ -83,6 +83,9 @@ def run_async(
     _active_workers.append(worker)
 
     def _cleanup() -> None:
+        # finished, thread tamamen bitmeden yayınlanır; son referansı bırakmadan
+        # önce bekle ki QThread hâlâ çalışırken silinmesin.
+        worker.wait()
         if worker in _active_workers:
             _active_workers.remove(worker)
 

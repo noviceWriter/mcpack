@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from mcpack.gui import pack_actions
 from mcpack.gui.components import (
     Card,
+    info,
     Chip,
     EmptyState,
     SearchField,
@@ -66,6 +67,8 @@ class ModTableModel(QAbstractTableModel):
         super().__init__()
         self.mods: list[ModEntry] = []
         self.present: set[str] = set()
+        self.updates: dict[str, object] = {}
+        """project_id -> ModUpdate (son "Güncellemeleri Kontrol Et" sonucu)."""
 
     def set_mods(self, mods: list[ModEntry], present: set[str]) -> None:
         self.beginResetModel()
@@ -92,7 +95,7 @@ class ModTableModel(QAbstractTableModel):
         missing = [d for d in mod.dependencies if d not in self.present]
         if role == Qt.ItemDataRole.DisplayRole:
             if col == "name":
-                return mod.name or mod.file_name
+                return ("↑ " if mod.project_id in self.updates else "") + (mod.name or mod.file_name)
             if col == "source":
                 return source_label(mod.source.value)
             if col == "env":
@@ -118,6 +121,8 @@ class ModTableModel(QAbstractTableModel):
                 return QColor(category_color(mod.source.value))
             if col == "deps" and missing:
                 return QColor(COLORS["danger"])
+            if col == "name" and mod.project_id in self.updates:
+                return QColor(COLORS["accent_hover"])
             if col == "env" and mod.env.is_client_only:
                 return QColor(COLORS["info"])
             if col in ("file", "size"):
@@ -127,6 +132,8 @@ class ModTableModel(QAbstractTableModel):
             tip += f"\nclient: {mod.env.client.value} · server: {mod.env.server.value}"
             if missing:
                 tip += "\n" + t("mods.missing_deps_tip", ids=", ".join(missing))
+            if mod.project_id in self.updates:
+                tip += "\n" + t("mods.update_tip", file=self.updates[mod.project_id].new_file)
             return tip
         return None
 
@@ -150,6 +157,8 @@ class ModFilterProxy(QSortFilterProxyModel):
         if self.env == "client_only" and not mod.env.is_client_only:
             return False
         if self.env == "server" and not mod.env.is_server_compatible:
+            return False
+        if self.env == "updates" and mod.project_id not in self.sourceModel().updates:
             return False
         if self.env == "missing":
             present = self.sourceModel().present
@@ -318,6 +327,7 @@ class ModsTab(QWidget):
         self.env_filter.addItem(t("mods.env_client_only"), "client_only")
         self.env_filter.addItem(t("mods.env_server"), "server")
         self.env_filter.addItem(t("mods.env_missing"), "missing")
+        self.env_filter.addItem(t("mods.env_updates"), "updates")
         self.env_filter.currentIndexChanged.connect(lambda _i: self._apply_filter())
         if not cheat:
             bar.addWidget(self.source_filter)
@@ -376,11 +386,45 @@ class ModsTab(QWidget):
         if not cheat:
             self.env_btn = button(t("mods.edit_env"), on_click=self._edit_env)
             actions.addWidget(self.env_btn)
+            self.updates_btn = button(t("mods.check_updates"), on_click=self._check_updates)
+            actions.addWidget(self.updates_btn)
             actions.addWidget(button(t("overview.check_deps"), variant="ghost", on_click=page.overview._check_deps))
         actions.addStretch()
         self.selection_label = label("", role="dim")
         actions.addWidget(self.selection_label)
         outer.addLayout(actions)
+
+    def _check_updates(self) -> None:
+        pack = self.page.pack
+        if pack is None:
+            return
+        self.updates_btn.setEnabled(False)
+
+        def done(updates: list, errors: list[str]) -> None:
+            self.updates_btn.setEnabled(True)
+            mod_updates = {u.project_id: u for u in updates if u.kind is None}
+            self.model.updates = mod_updates
+            self.model.layoutChanged.emit()
+            if not updates:
+                note = t("mods.all_up_to_date") + (f" ({t('updates.errors', count=len(errors))})" if errors else "")
+                self.page.ctl.notify.emit("warning" if errors else "success", note)
+                return
+            from mcpack.gui.dialogs import UpdatesDialog
+
+            dialog = UpdatesDialog(updates, errors, self)
+            if dialog.exec():
+                self.page.ctl.apply_updates(pack, dialog.selected(), on_done=self._after_apply)
+
+        self.page.ctl.check_updates(pack, done, on_error=lambda _m: self.updates_btn.setEnabled(True))
+
+    def _after_apply(self, result) -> None:
+        applied_ids = {pid for pid, u in self.model.updates.items() if u.name in result.applied}
+        for pid in applied_ids:
+            self.model.updates.pop(pid, None)
+        self.model.layoutChanged.emit()
+        problems = [f"• {x}" for x in result.failed] + [f"• {t('mods.unresolved_dep', name=x)}" for x in result.unresolved_dependencies]
+        if problems:
+            info(self, t("updates.problems_title"), "\n".join(problems), warning=True)
 
     def _mods(self, pack: Pack) -> list[ModEntry]:
         if self.cheat:

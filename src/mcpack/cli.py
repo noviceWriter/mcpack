@@ -10,6 +10,7 @@ için kullanılır (proje-amacı.md §8, adım 7).
     mcpack-cli add-mod <pack_id> AANobbMI --minecraft 1.21.1 --loader fabric
     mcpack-cli fork <pack_id> --minecraft 1.21.1
     mcpack-cli export <pack_id> mrpack --output ./out/pack.mrpack
+    mcpack-cli check-updates <pack_id> [--apply]
 """
 
 from __future__ import annotations
@@ -190,11 +191,46 @@ async def cmd_export(args: argparse.Namespace, settings: Settings) -> None:
             source_dir=Path(args.source_dir) if args.source_dir else Path.cwd(),
             output_path=Path(args.output),
             cache_dir=settings.resolved_packs_dir() / ".cache" / pack.id,
+            content_root=manager.content_root(pack),
             client=client,
             exclude_dirs=settings.excluded_override_dirs(),
             progress_cb=lambda done, total: print(f"\r{done}/{total}", end="", file=sys.stderr),
         )
     print(f"\nOluşturuldu: {output}")
+
+
+async def cmd_check_updates(args: argparse.Namespace, settings: Settings) -> None:
+    from mcpack.packs.updates import apply_updates, check_updates
+
+    manager = _manager(settings)
+    pack = manager.load(args.pack_id)
+    modrinth = ModrinthClient()
+    curseforge = CurseForgeClient(settings.curseforge_api_key) if settings.curseforge_api_key else None
+    try:
+        updates, errors = await check_updates(pack, modrinth=modrinth, curseforge=curseforge)
+        for err in errors:
+            print(f"  ! kontrol edilemedi: {err}", file=sys.stderr)
+        if not updates:
+            print("Tüm modlar güncel.")
+            return
+        print(f"{len(updates)} güncelleme bulundu:")
+        for u in updates:
+            print(f"  {u.name}: {u.current_file} -> {u.new_file}  [{u.source.value}]")
+        if not args.apply:
+            print("Uygulamak için: --apply")
+            return
+        result = await apply_updates(manager, pack, updates, modrinth=modrinth, curseforge=curseforge)
+        print(f"Güncellendi: {len(result.applied)}")
+        for dep in result.added_dependencies:
+            print(f"  + yeni bağımlılık: {dep}")
+        for dep in result.unresolved_dependencies:
+            print(f"  ! UYARI: zorunlu bağımlılık eklenemedi: {dep}", file=sys.stderr)
+        for fail in result.failed:
+            print(f"  ! başarısız: {fail}", file=sys.stderr)
+    finally:
+        await modrinth.aclose()
+        if curseforge:
+            await curseforge.aclose()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -265,6 +301,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", required=True)
     p.add_argument("--source-dir", help="overrides için kaynak dizin (config, kubejs, ...)")
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("check-updates", help="Pack'teki mod/içerik güncellemelerini kontrol et")
+    p.add_argument("pack_id")
+    p.add_argument("--apply", action="store_true", help="Bulunan tüm güncellemeleri uygula")
+    p.set_defaults(func=cmd_check_updates)
 
     return parser
 

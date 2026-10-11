@@ -43,6 +43,7 @@ mcpack-cli set-env <pack_id> <project_id> --client optional --server unsupported
 mcpack-cli fork <pack_id> --minecraft 1.21.1   # pack'i başka bir MC versiyonuna uyarlar; uyumsuz modlar eklenmez, uyarı basılır
 mcpack-cli export <pack_id> mrpack --output ./out/pack.mrpack
 mcpack-cli export <pack_id> server --output ./out/pack-server.zip
+mcpack-cli check-updates <pack_id>            # güncellemeleri listeler; --apply ile uygular
 ```
 
 ## Testler

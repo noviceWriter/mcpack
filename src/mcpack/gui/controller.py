@@ -461,6 +461,57 @@ class AppController(QObject):
 
         self._run(t("ctl.task.cheat_mod", label=label, minecraft=pack.minecraft), task, on_success=success, category="mods")
 
+    # ------------------------------------------------------------------ güncellemeler
+
+    def _clients(self):
+        modrinth = ModrinthClient()
+        curseforge = CurseForgeClient(self.settings.curseforge_api_key) if self.has_curseforge() else None
+        return modrinth, curseforge
+
+    def check_updates(
+        self, pack: Pack, on_done: Callable[[list, list[str]], None], on_error: ErrorCallback = None
+    ) -> None:
+        from mcpack.packs.updates import check_updates
+
+        async def task(ctx: TaskContext):
+            modrinth, curseforge = self._clients()
+            try:
+                return await check_updates(pack, modrinth=modrinth, curseforge=curseforge, progress_cb=ctx.progress)
+            finally:
+                await modrinth.aclose()
+                if curseforge:
+                    await curseforge.aclose()
+
+        self._run(
+            t("ctl.task.check_updates", name=pack.name), task, on_success=lambda r: on_done(*r),
+            on_error=on_error, category="mods",
+        )
+
+    def apply_updates(self, pack: Pack, updates: list, on_done: Callable[[object], None] | None = None) -> None:
+        from mcpack.packs.updates import apply_updates
+
+        async def task(ctx: TaskContext):
+            modrinth, curseforge = self._clients()
+            try:
+                return await apply_updates(
+                    self.manager, pack, updates, modrinth=modrinth, curseforge=curseforge, progress_cb=ctx.progress
+                )
+            finally:
+                await modrinth.aclose()
+                if curseforge:
+                    await curseforge.aclose()
+
+        def success(result) -> None:
+            self.pack_updated.emit(pack.id)
+            msg = t("ctl.updates_applied", count=len(result.applied))
+            if result.added_dependencies:
+                msg += " " + t("ctl.mod_added_deps", count=len(result.added_dependencies))
+            self.notify.emit("warning" if result.failed or result.unresolved_dependencies else "success", msg)
+            if on_done:
+                on_done(result)
+
+        self._run(t("ctl.task.apply_updates", name=pack.name, count=len(updates)), task, on_success=success, category="mods")
+
     # ------------------------------------------------------------------ bağımlılıklar
 
     def describe_missing_dependencies(self, pack: Pack, on_done: Callable[[list[str]], None]) -> None:

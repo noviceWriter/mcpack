@@ -395,3 +395,53 @@ class PackMetaDialog(FormDialog):
             "author": self.author_input.text().strip(),
             "summary": self.summary_input.text().strip(),
         }
+
+
+class UpdatesDialog(FormDialog):
+    """Bulunan güncellemeler: her satır işaretlenebilir (varsayılan: hepsi)."""
+
+    def __init__(self, updates: list, errors: list[str], parent=None) -> None:
+        super().__init__(t("updates.title"), parent, width=760, subtitle=t("updates.subtitle", count=len(updates)))
+        self.ok_button.setText(t("updates.apply"))
+        self._updates = updates
+        self.table = QTableWidget(len(updates), 4)
+        self.table.setHorizontalHeaderLabels([t("updates.col.name"), t("updates.col.current"), t("updates.col.new"), t("updates.col.source")])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setAlternatingRowColors(True)
+        self.table.setMinimumHeight(320)
+        for row, u in enumerate(updates):
+            name = QTableWidgetItem(u.name + (f"  ({t(f'updates.kind.{u.kind.value}')})" if u.kind else ""))
+            name.setFlags(name.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            name.setCheckState(Qt.CheckState.Checked)
+            self.table.setItem(row, 0, name)
+            self.table.setItem(row, 1, QTableWidgetItem(u.current_file))
+            self.table.setItem(row, 2, QTableWidgetItem(u.new_file))
+            self.table.setItem(row, 3, QTableWidgetItem(u.source.value))
+        self.body.addWidget(self.table)
+        row = QHBoxLayout()
+        for text, state in ((t("updates.select_all"), Qt.CheckState.Checked), (t("updates.select_none"), Qt.CheckState.Unchecked)):
+            b = QPushButton(text)
+            b.setProperty("variant", "ghost")
+            b.clicked.connect(lambda _c=False, st=state: self._set_all(st))
+            row.addWidget(b)
+        row.addStretch()
+        self.body.addLayout(row)
+        self.body.addWidget(label(t("updates.note"), role="dim", wrap=True))
+        if errors:
+            box = label(t("updates.errors", count=len(errors)) + "\n" + "\n".join(f"• {e}" for e in errors[:8]), role="notice", wrap=True)
+            self.body.addWidget(box)
+
+    def _set_all(self, state) -> None:
+        for r in range(self.table.rowCount()):
+            self.table.item(r, 0).setCheckState(state)
+
+    def validate(self) -> str | None:
+        return None if self.selected() else t("updates.error_none")
+
+    def selected(self) -> list:
+        return [u for r, u in enumerate(self._updates) if self.table.item(r, 0).checkState() == Qt.CheckState.Checked]

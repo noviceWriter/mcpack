@@ -33,15 +33,15 @@ maddenin şu anki halini gösterir.
 
 | Sorun | Durum |
 |---|---|
-| CurseForge API anahtarı ve web paneli şifresi `settings.json` içinde düz metin olarak duruyor (keyring kullanılabilir). | ⏳ |
+| CurseForge API anahtarı ve web paneli şifresi `settings.json` içinde düz metin olarak duruyor (keyring kullanılabilir). | ✅ İşletim sistemi anahtar zinciri; düz metin değerler otomatik taşınır, dosya 0600 |
 | Web paneli girişinde deneme sınırı yoktu, kaba kuvvetle şifre denemeye açıktı. | ✅ IP başına 5 dakikada 8 hatalı deneme, sonra HTTP 429 |
-| Wurst/Meteor indirmelerinde hash doğrulaması yok. | ⏳ |
+| Wurst/Meteor indirmelerinde hash doğrulaması yok. | ✅ İlk indirmede doğrulama (Wurst: GitHub SHA-256), hash'ler pack'e kaydediliyor |
 
 ## 🟡 Sağlamlık / Kod kalitesi
 
 | Sorun | Durum |
 |---|---|
-| `save_pack` ve `Settings.save` atomik değil: yazma sırasında çökme olursa pack JSON'u bozulabilir. Çözüm: geçici dosyaya yazıp `os.replace` ile değiştirmek. | ⏳ |
+| `save_pack` ve `Settings.save` atomik değil: yazma sırasında çökme olursa pack JSON'u bozulabilir. Çözüm: geçici dosyaya yazıp `os.replace` ile değiştirmek. | ✅ `fsutil.atomic_write_text` |
 | Sürüm tutarsızdı: `__init__.__version__ = "0.1.0"`, User-Agent'ta `0.1.0`, gerçek sürüm 1.1.0. | ✅ Hepsi `mcpack.__version__` = 1.1.0 |
 | `ServerProcess` bir `QObject`; backend Qt'ye bağımlı, web paneli Qt olmadan çalışamıyor. | ⏳ |
 | Oyuncu listesi her 4 sn'de bir koşulsuz `list` gönderip sunucu konsolunu ve loglarını kirletiyordu. | ✅ Sadece Oyuncular sekmesi açıkken yoklanıyor |
@@ -54,7 +54,7 @@ maddenin şu anki halini gösterir.
 
 | Öneri | Durum |
 |---|---|
-| Mod güncelleme kontrolü | ⏳ |
+| Mod güncelleme kontrolü | ✅ GUI (Modlar > ↑ Güncellemeleri Kontrol Et) + `mcpack-cli check-updates` |
 | Dünya yedekleme | ⏳ |
 | `.mrpack` / CurseForge zip **içe aktarma** (şu an sadece dışa aktarma var) | ⏳ |
 | Mod silmede onay ve toplu seçim/silme | ✅ Çoklu seçim, onay, bağımlı modlar için ek uyarı |
@@ -106,3 +106,8 @@ maddenin şu anki halini gösterir.
 5. `.mrpack` içe aktarma.
 6. Dünya yedekleme.
 7. `ServerProcess`'in Qt'den ayrılması (web panelinin bağımsız çalışabilmesi için).
+
+## İlerleme (12 Ekim 2026)
+
+- ✅ 1. Atomik yazım · ✅ 2. Wurst/Meteor doğrulaması · ✅ 3. Anahtar zinciri · ✅ 4. Mod güncelleme kontrolü
+- Ek: `mcpack-cli export` komutunun `content_root` eksikliği yüzünden çöktüğü fark edilip düzeltildi.

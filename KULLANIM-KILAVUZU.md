@@ -79,6 +79,13 @@ bölümler bulunur:
   modlara bağımlı başka modlar varsa ayrıca uyarılırsınız.
 - Sağ tık: istemci/sunucu düzelt, proje sayfasını aç, proje ID'si / dosya
   adı / indirme URL'si kopyala. Çift tıklama ortam düzenleyicisini açar.
+- **↑ Güncellemeleri Kontrol Et**: pack'teki mod ve shader/kaynak paketi/
+  datapack'ler için, pack'in Minecraft sürümü ve loader'ıyla uyumlu daha yeni
+  sürüm olup olmadığına bakar (Modrinth modları tek istekte sorgulanır).
+  Güncellemesi olan modlar tabloda **↑** ile işaretlenir ("Güncellemesi olan"
+  filtresiyle listelenebilir); açılan pencereden istediklerinizi seçip
+  güncellersiniz. Elle düzelttiğiniz istemci/sunucu ayarları korunur; yeni
+  sürüm yeni bir zorunlu bağımlılık getirirse otomatik eklenir.
 
 ### 3.2 Keşfet (mod / shader / kaynak paketi / datapack / dünya ekleme)
 - Üstteki çiplerle içerik türünü seçin, arayın (boş arama popülerleri

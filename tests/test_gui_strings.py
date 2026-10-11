@@ -33,6 +33,7 @@ DYNAMIC = {
     "players.{which}_title": ["players.inventory_title", "players.ender_title"],
     "server.state.{self.state}": [f"server.state.{k}" for k in ("not_prepared", "needs_install", "ready")],
     "serverprop.{prop.key}.label": [],
+    "updates.kind.{u.kind.value}": [f"updates.kind.{k}" for k in ("shaderpack", "resourcepack", "datapack", "world")],
     "status.task_{task.status}": ["status.task_done", "status.task_failed", "status.task_cancelled"],
 }
 

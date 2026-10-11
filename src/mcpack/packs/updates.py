@@ -142,3 +142,51 @@ async def check_updates(
         pack.name, total, len(updates), len(errors), len(bulk),
     )
     return updates, errors
+
+
+@dataclass
+class ApplyResult:
+    applied: list[str]
+    added_dependencies: list[str]
+    unresolved_dependencies: list[str]
+    failed: list[str]
+
+
+async def apply_updates(
+    manager,
+    pack: Pack,
+    updates: list[ModUpdate],
+    *,
+    modrinth: ModSource,
+    curseforge: ModSource | None,
+    progress_cb=None,
+) -> ApplyResult:
+    """Seçilen güncellemeleri uygular. Yeni sürüm pack'te olmayan YENİ bir
+    zorunlu bağımlılık getirdiyse o da (mod eklemedeki aynı çözümleyiciyle)
+    eklenir; çözülemeyenler raporlanır."""
+    result = ApplyResult([], [], [], [])
+    for i, update in enumerate(updates, start=1):
+        try:
+            if update.kind is None:
+                manager.update_mod(pack, update.latest)
+                source = modrinth if update.source == ModSourceType.MODRINTH else curseforge
+                if source is not None:
+                    deps, unresolved = await manager.resolve_dependencies(pack, source, update.latest)
+                    for dep in deps:
+                        detail = None
+                        try:
+                            detail = await source.get_project(dep.project_id)
+                        except Exception:  # noqa: BLE001 - adsız da eklenebilir
+                            pass
+                        manager.add_mod(pack, dep, detail)
+                        result.added_dependencies.append(detail.title if detail else dep.project_id)
+                    result.unresolved_dependencies += unresolved
+            else:
+                manager.update_content_download(pack, update.kind, update.latest)
+            result.applied.append(update.name)
+        except Exception as exc:  # noqa: BLE001 - bir güncellemenin hatası diğerlerini durdurmasın
+            log.warning("Güncelleme uygulanamadı %s: %s", update.name, exc)
+            result.failed.append(f"{update.name}: {exc}")
+        if progress_cb:
+            progress_cb(i, len(updates))
+    return result

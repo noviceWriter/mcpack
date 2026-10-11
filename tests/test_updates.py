@@ -100,3 +100,25 @@ def test_update_content_download(tmp_path):
     m.add_content_download(pack, ContentKind.SHADERPACK, _v(ModSourceType.MODRINTH, "bsl", "v1", "bsl1.zip"), d)
     fresh = m.update_content_download(pack, ContentKind.SHADERPACK, _v(ModSourceType.MODRINTH, "bsl", "v2", "bsl2.zip"))
     assert fresh.file_name == "bsl2.zip" and fresh.name == "BSL"
+
+
+class FakeDepSource(FakeSource):
+    async def get_project(self, project_id):
+        return ModDetail(source=ModSourceType.MODRINTH, project_id=project_id, slug=project_id, title=project_id.upper(), description="")
+
+
+async def test_apply_updates_adds_new_required_dependency(setup):
+    from mcpack.packs.updates import apply_updates
+
+    m, pack = setup
+    src = FakeDepSource({
+        "sodium": [_v(ModSourceType.MODRINTH, "sodium", "v2", "sodium-2.jar", deps=["fabric-api"])],
+        "fabric-api": [_v(ModSourceType.MODRINTH, "fabric-api", "f1", "fapi.jar")],
+    })
+    updates, _ = await check_updates(pack, modrinth=src, curseforge=FakeSource({}))
+    sodium = [u for u in updates if u.project_id == "sodium"]
+    result = await apply_updates(m, pack, sodium, modrinth=src, curseforge=None)
+    assert result.applied == ["Sodium"]
+    assert result.added_dependencies == ["FABRIC-API"]
+    assert pack.find_mod("fabric-api") is not None
+    assert pack.find_mod("sodium").file_name == "sodium-2.jar"

@@ -12,6 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from mcpack.fsutil import atomic_write_text
+
 PropertyType = Literal["str", "int", "bool", "choice"]
 
 
@@ -63,9 +65,8 @@ def read_properties(path: Path) -> dict[str, str]:
 
 
 def write_properties(path: Path, values: dict[str, str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{key}={value}" for key, value in values.items()]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(lines) + "\n")
 
 
 def merged_with_defaults(values: dict[str, str]) -> dict[str, str]:

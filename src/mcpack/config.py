@@ -117,7 +117,6 @@ class Settings(BaseModel):
 
     def save(self) -> None:
         path = config_dir() / SETTINGS_FILE
-        path.write_text(
-            json.dumps(self.model_dump(), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        from mcpack.fsutil import atomic_write_text
+
+        atomic_write_text(path, json.dumps(self.model_dump(), indent=2, ensure_ascii=False))

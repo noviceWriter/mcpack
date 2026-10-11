@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from mcpack.fsutil import atomic_write_text
 from mcpack.models import Pack
 
 
@@ -42,7 +43,7 @@ def load_pack(path: Path) -> Pack:
 def save_pack(pack: Pack, packs_dir: Path) -> Path:
     packs_dir.mkdir(parents=True, exist_ok=True)
     path = pack_file_path(packs_dir, pack.id)
-    path.write_text(pack.model_dump_json(indent=2), encoding="utf-8")
+    atomic_write_text(path, pack.model_dump_json(indent=2))
     return path
 
 

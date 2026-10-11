@@ -43,7 +43,7 @@ maddenin şu anki halini gösterir.
 |---|---|
 | `save_pack` ve `Settings.save` atomik değil: yazma sırasında çökme olursa pack JSON'u bozulabilir. Çözüm: geçici dosyaya yazıp `os.replace` ile değiştirmek. | ✅ `fsutil.atomic_write_text` |
 | Sürüm tutarsızdı: `__init__.__version__ = "0.1.0"`, User-Agent'ta `0.1.0`, gerçek sürüm 1.1.0. | ✅ Hepsi `mcpack.__version__` = 1.1.0 |
-| `ServerProcess` bir `QObject`; backend Qt'ye bağımlı, web paneli Qt olmadan çalışamıyor. | ⏳ |
+| `ServerProcess` bir `QObject`; backend Qt'ye bağımlı, web paneli Qt olmadan çalışamıyor. | ✅ Düz Python dinleyicileri; backend PySide6 olmadan import edilebiliyor (testli) |
 | Oyuncu listesi her 4 sn'de bir koşulsuz `list` gönderip sunucu konsolunu ve loglarını kirletiyordu. | ✅ Sadece Oyuncular sekmesi açıkken yoklanıyor |
 | `i18n.py` docstring'i var olmayan bir `i18n.js` dosyasına atıf yapıyordu. | ✅ |
 | `main_window.py` 1.585 satırlık tek bir sınıftı; iş mantığı ile arayüz iç içeydi. | ✅ İş mantığı `gui/controller.py`'de, sayfalar `gui/pages/*` altında |
@@ -97,18 +97,15 @@ maddenin şu anki halini gösterir.
 
 189 test geçiyor. Bunlara yeni eklenenler: çeviri anahtarı bütünlüğü, biçimlendirme, ayar sıfırlama/yedekleme ve port tespiti testleri. Arayüz ekransız (offscreen) modda tüm sayfalarda gezilip ekran görüntüleriyle kontrol edildi. Web paneli Chrome'da masaüstü ve mobil genişlikte kontrol edildi.
 
-## Açık kalanlar (öncelik sırasıyla öneri)
+## Açık kalanlar
 
-1. `save_pack` / `Settings.save` atomik yazım (veri kaybı riski, küçük iş).
-2. Wurst/Meteor indirmeleri için en azından boyut/SHA kaydı ve sonraki indirmelerde doğrulama.
-3. API anahtarı ve şifre için işletim sistemi anahtar zinciri (keyring).
-4. Mod güncelleme kontrolü.
-5. `.mrpack` içe aktarma.
-6. Dünya yedekleme.
-7. `ServerProcess`'in Qt'den ayrılması (web panelinin bağımsız çalışabilmesi için).
+Rapordaki önerilen 7 maddenin hepsi tamamlandı. Küçük kalanlar:
+- Arayüz (widget) testleri: şimdilik ekransız duman testleri elle çalıştırılıyor; pytest'e taşınabilir.
+- `PySide6` hâlâ zorunlu bağımlılık; backend artık Qt'siz çalışabildiği için ileride `pip install mcpack[gui]` gibi isteğe bağlı yapılabilir.
 
 ## İlerleme (12 Ekim 2026)
 
 - ✅ 1. Atomik yazım · ✅ 2. Wurst/Meteor doğrulaması · ✅ 3. Anahtar zinciri · ✅ 4. Mod güncelleme kontrolü · ✅ 5. Modpack içe aktarma (gerçek bir paketle test edildi: Fabulously Optimized, 48/48 mod tanındı) · ✅ 6. Dünya yedekleme (gerçek 1.20.1 sunucusunda çalışırken yedek + geri yükleme test edildi)
+- ✅ 7. `ServerProcess` Qt'den ayrıldı — önerilen 7 maddenin hepsi tamamlandı.
 - Ek bulgu: `prepare_server`, seçili dünya varsa sunucunun mevcut `world/` klasörünü siliyordu — artık önce otomatik yedekleniyor.
 - Ek: `mcpack-cli export` komutunun `content_root` eksikliği yüzünden çöktüğü fark edilip düzeltildi.

@@ -834,9 +834,7 @@ class AppController(QObject):
         # alınıp kendi (QueuedConnection'lı) sinyalimizle GUI thread'ine
         # taşınır — bkz. _on_line_from_thread.
         process.add_listener(lambda line, pid=pack_id: self._line_from_thread.emit(pid, line) if line is not None else None)
-        process.process_exited.connect(
-            lambda code, pid=pack_id: self._exit_from_thread.emit(pid, code), Qt.ConnectionType.DirectConnection
-        )
+        process.add_exit_listener(lambda code, pid=pack_id: self._exit_from_thread.emit(pid, code))
         self.registry.set(pack_id, process)
         try:
             process.start(cmd, cwd=root)

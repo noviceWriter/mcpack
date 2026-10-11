@@ -13,7 +13,6 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from PySide6.QtCore import QCoreApplication, Qt
 
 from mcpack.models import Loader, Pack
 from mcpack.server_jar import VERSION_MANIFEST_URL
@@ -43,8 +42,6 @@ from mcpack.server_runtime import (
     server_state,
 )
 
-if QCoreApplication.instance() is None:
-    QCoreApplication([])
 
 
 # -- required_java_major -----------------------------------------------------
@@ -278,11 +275,9 @@ def test_server_process_start_send_command_and_stop(tmp_path: Path):
 
     process = ServerProcess()
     received: list[str] = []
-    # DirectConnection: testte gerçek bir Qt event loop (app.exec()) çalışmıyor,
-    # bu yüzden varsayılan Queued teslimat hiç işlenmez. Gerçek GUI'de
-    # (gui/server_section.py) MainWindow'un event loop'u zaten çalıştığı
-    # için orada varsayılan (Queued) bağlantı kullanılır.
-    process.output_line.connect(received.append, Qt.ConnectionType.DirectConnection)
+    exit_codes: list[int] = []
+    process.add_listener(lambda line: line is not None and received.append(line))
+    process.add_exit_listener(exit_codes.append)
 
     process.start([sys.executable, str(script)], cwd=tmp_path)
     assert process.is_running
@@ -295,6 +290,7 @@ def test_server_process_start_send_command_and_stop(tmp_path: Path):
     process.stop(timeout=5)
     assert not process.is_running
     assert any("stopping" in line for line in received)
+    _wait_until(lambda: exit_codes == [0])
 
 
 def test_server_process_start_twice_raises(tmp_path: Path):

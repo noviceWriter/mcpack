@@ -24,14 +24,13 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from PySide6.QtCore import QObject, Signal
 
 from mcpack.downloader import DownloadCancelledError
 from mcpack.export.base import ProgressCallback, collect_world_files, ensure_mods_downloaded
 from mcpack.export.server import ensure_server_file_downloaded, filter_server_mods
 from mcpack.i18n import t
 from mcpack.models import Pack
-from mcpack.server_jar import ServerDownload, ServerDownloadError, get_server_download
+from mcpack.server_jar import ServerDownloadError, get_server_download
 
 from mcpack.logging_setup import get_logger
 
@@ -525,16 +524,19 @@ class _Waiter:
         self.result: str | None = None
 
 
-class ServerProcess(QObject):
+class ServerProcess:
     """Çalışan bir sunucu subprocess'ini sarmalar: stdin'e komut yazma,
-    stdout'u satır satır okuyup Qt sinyaliyle GUI thread'ine taşıma, ve
-    GERÇEK Minecraft "stop" komutuyla düzgün kapatma (kill DEĞİL)."""
+    stdout'u satır satır okuyup abonelere iletme, ve GERÇEK Minecraft "stop"
+    komutuyla düzgün kapatma (kill DEĞİL).
 
-    output_line = Signal(str)
-    process_exited = Signal(int)
+    Qt'ye BAĞIMLI DEĞİLDİR (önceden QObject + Signal idi; bu yüzden web
+    paneli ve CLI de PySide6 gerektiriyordu). Abonelik düz Python
+    callback'leriyle: add_listener (her satır; akış bitince None) ve
+    add_exit_listener (çıkış kodu). Callback'ler OKUYUCU THREAD'inde
+    çağrılır — GUI tarafı kendi Qt sinyaline çevirmekle yükümlüdür (bkz.
+    gui/controller.py)."""
 
     def __init__(self) -> None:
-        super().__init__()
         self._process: subprocess.Popen | None = None
         self._reader_thread: threading.Thread | None = None
         self.buffer: deque[str] = deque(maxlen=CONSOLE_BUFFER_LINES)
@@ -542,10 +544,7 @@ class ServerProcess(QObject):
         self._waiters: list[_Waiter] = []
         self._listeners_lock = threading.Lock()
         self._listeners: list[Callable[[str | None], None]] = []
-        """Qt Signal'den BAĞIMSIZ, düz Python callback'ler — web paneli
-        (bkz. webpanel/app.py) Qt event loop'una ihtiyaç duymadan canlı
-        satır akışına böyle abone olur. output_line Signal'i ile AYNI
-        anda, _read_output içinden çağrılır (bkz. aşağı)."""
+        self._exit_listeners: list[Callable[[int], None]] = []
 
     @property
     def is_running(self) -> bool:
@@ -575,7 +574,6 @@ class ServerProcess(QObject):
         for line in process.stdout:
             line = line.rstrip("\n")
             self.buffer.append(line)
-            self.output_line.emit(line)
             self._notify_waiters(line)
             self._notify_listeners(line)
         returncode = process.wait()
@@ -584,7 +582,13 @@ class ServerProcess(QObject):
         else:
             tail = "\n".join(list(self.buffer)[-15:])
             log.error("Sunucu süreci hata koduyla kapandı (pid=%s, kod %s). Son satırlar:\n%s", process.pid, returncode, tail)
-        self.process_exited.emit(returncode)
+        with self._listeners_lock:
+            exit_listeners = list(self._exit_listeners)
+        for callback in exit_listeners:
+            try:
+                callback(returncode)
+            except Exception:  # noqa: BLE001 - bir dinleyicinin hatası diğerlerini etkilemesin
+                log.exception("Sunucu çıkış dinleyicisi hata verdi")
         self._notify_listeners(None)  # akışın bittiğini düz-Python dinleyicilere bildir
 
     def _notify_waiters(self, line: str) -> None:
@@ -608,6 +612,10 @@ class ServerProcess(QObject):
     def add_listener(self, callback: Callable[[str | None], None]) -> None:
         with self._listeners_lock:
             self._listeners.append(callback)
+
+    def add_exit_listener(self, callback: Callable[[int], None]) -> None:
+        with self._listeners_lock:
+            self._exit_listeners.append(callback)
 
     def remove_listener(self, callback: Callable[[str | None], None]) -> None:
         with self._listeners_lock:

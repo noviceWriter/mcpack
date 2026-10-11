@@ -9,13 +9,19 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
 
 import httpx
 
-USER_AGENT = "mcpack/0.1.0 (github.com/mcpack; iletisim: gunselahmet53@gmail.com)"
+from mcpack import __version__
+from mcpack.logging_setup import NETWORK, get_logger
+
+log = get_logger(__name__)
+
+USER_AGENT = f"mcpack/{__version__} (github.com/mcpack; iletisim: gunselahmet53@gmail.com)"
 
 ProgressCallback = Callable[[int, int], None]
 """(indirilen_bayt, toplam_bayt) -> None"""
@@ -82,11 +88,35 @@ class RateLimiter:
                 await asyncio.sleep(min(reset_f, 10.0))
 
 
+_START_KEY = "mcpack_started"
+
+
+async def _on_request(request: httpx.Request) -> None:
+    request.extensions[_START_KEY] = time.perf_counter()
+
+
+async def _on_response(response: httpx.Response) -> None:
+    """Her yanıt ağ kaydına (logging_setup.NETWORK) düşer — Geliştirici
+    sayfasındaki "Ağ" sekmesi buradan beslenir. Başlıklar (CurseForge
+    x-api-key) KAYDEDİLMEZ, sadece yöntem/URL/durum/süre."""
+    request = response.request
+    started = request.extensions.get(_START_KEY)
+    elapsed_ms = (time.perf_counter() - started) * 1000 if started is not None else None
+    event = NETWORK.record(request.method, str(request.url), response.status_code, elapsed_ms)
+    level = 30 if response.status_code >= 400 else 10  # WARNING / DEBUG
+    log.log(level, "HTTP %s %s -> %s (%.0f ms)", request.method, event.url, response.status_code, elapsed_ms or 0)
+
+
 def make_client(*, extra_headers: dict[str, str] | None = None) -> httpx.AsyncClient:
     headers = {"User-Agent": USER_AGENT}
     if extra_headers:
         headers.update(extra_headers)
-    return httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True)
+    return httpx.AsyncClient(
+        headers=headers,
+        timeout=30.0,
+        follow_redirects=True,
+        event_hooks={"request": [_on_request], "response": [_on_response]},
+    )
 
 
 async def download_file(
@@ -135,15 +165,23 @@ async def download_file(
             tmp_path.replace(dest)
             if sha1 or sha512:
                 verify_hashes(dest, sha1=sha1, sha512=sha512)
+            log.debug("İndirildi: %s (%d bayt, deneme %d)", dest.name, downloaded, attempt)
             return dest
         except DownloadCancelledError:
             tmp_path.unlink(missing_ok=True)
+            log.info("İndirme iptal edildi: %s", dest.name)
             raise
         except HashMismatchError as exc:
             dest.unlink(missing_ok=True)
             last_error = exc
+            log.warning("Hash uyuşmazlığı (deneme %d/%d): %s", attempt, max_retries, exc)
         except httpx.HTTPError as exc:
+            tmp_path.unlink(missing_ok=True)
             last_error = exc
+            if isinstance(exc, httpx.RequestError):  # durum hataları zaten yanıt hook'unda kaydedildi
+                NETWORK.record("GET", url, None, None, error=f"{type(exc).__name__}: {exc}")
+            log.warning("İndirme hatası (deneme %d/%d) %s: %s", attempt, max_retries, dest.name, exc)
             await asyncio.sleep(min(2**attempt, 10))
 
+    log.error("İndirme başarısız: %s (%d deneme) — son hata: %s", dest.name, max_retries, last_error)
     raise DownloadError(f"{dest.name} indirilemedi ({max_retries} denemeden sonra)") from last_error

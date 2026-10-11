@@ -1,4 +1,4 @@
-from mcpack.gui.widgets import _environment_label
+from mcpack.gui.formatting import environment_label as _environment_label
 
 
 def test_client_only_mod():

@@ -23,6 +23,9 @@ from mcpack.sources.base import (
     VersionDependency,
     VersionFile,
 )
+from mcpack.logging_setup import NETWORK, get_logger
+
+log = get_logger(__name__)
 
 BASE_URL = "https://api.modrinth.com/v2"
 
@@ -67,6 +70,8 @@ class ModrinthClient(ModSource):
                 raise SourceAPIError("Modrinth rate limit'ine takıldı, birazdan tekrar deneyin.") from exc
             raise SourceAPIError(f"Modrinth API hatası ({status}): {path}") from exc
         except httpx.RequestError as exc:
+            NETWORK.record("GET", f"{BASE_URL}{path}", None, None, error=f"{type(exc).__name__}: {exc}")
+            log.warning("Modrinth ağ hatası %s: %s", path, exc)
             raise SourceAPIError(f"Modrinth API'sine ulaşılamadı (ağ hatası): {exc}") from exc
         return response
 

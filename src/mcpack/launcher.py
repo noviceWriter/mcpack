@@ -32,6 +32,10 @@ from mcpack.export.base import (
 from mcpack.export.prism import build_instance_cfg, build_mmc_pack
 from mcpack.models import Pack
 
+from mcpack.logging_setup import get_logger
+
+log = get_logger(__name__)
+
 
 class SKLauncherError(Exception):
     pass
@@ -67,6 +71,7 @@ async def prepare_instance(
 ) -> Path:
     """Pack için bir SKLauncher instance klasörü oluşturur/günceller, yolunu döner."""
     instance_dir = instances_dir / instance_dir_name(pack)
+    log.info("SKLauncher instance hazırlanıyor: %s -> %s", pack.name, instance_dir)
     minecraft_dir = instance_dir / ".minecraft"
     mods_dir = minecraft_dir / "mods"
     mods_dir.mkdir(parents=True, exist_ok=True)
@@ -113,6 +118,7 @@ def launch(sklauncher_path: str) -> subprocess.Popen:
     if not exe.exists():
         raise SKLauncherError(f"SKLauncher yolu bulunamadı: {sklauncher_path}")
 
+    log.info("SKLauncher başlatılıyor: %s", exe)
     if exe.suffix.lower() == ".jar":
         return subprocess.Popen(["java", "-jar", str(exe)], cwd=str(exe.parent))
     if sys.platform != "win32" and exe.suffix == "":

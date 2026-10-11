@@ -2,152 +2,241 @@
 <html lang="tr" id="html-root">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title id="page-title">mcpack Web Paneli</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title id="page-title">mcpack</title>
 <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
 
-<div id="login-screen" class="hidden">
-  <div class="login-card">
-    <h1 id="login-heading">🖥 mcpack Web Paneli</h1>
-    <p class="sub" id="login-subtitle">Bu panel ağdaki diğer cihazlardan da erişilebilir — şifrenizi girin.</p>
-    <div class="login-error" id="login-error"></div>
-    <input type="password" id="login-password" placeholder="Şifre" autofocus />
-    <button class="primary" id="login-button">Giriş Yap</button>
-  </div>
-</div>
+<!-- giriş -->
+<section id="login-screen" class="screen hidden" aria-labelledby="login-heading">
+  <form class="login-card" id="login-form" autocomplete="on">
+    <div class="brand-mark">◈</div>
+    <h1 id="login-heading" data-i18n="webpanel.app_title">mcpack</h1>
+    <p class="muted" data-i18n="webpanel.login.subtitle"></p>
+    <div class="notice danger hidden" id="login-error" role="alert"></div>
+    <input type="password" id="login-password" autocomplete="current-password" data-i18n-placeholder="webpanel.login.password_placeholder" required />
+    <button class="btn primary" type="submit" data-i18n="webpanel.login.submit"></button>
+  </form>
+</section>
 
+<!-- uygulama -->
 <div id="app" class="hidden">
-  <div id="sidebar">
-    <div id="sidebar-header">
-      <span class="logo">🖥 mcpack</span>
-      <span id="network-badge">...</span>
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand"><span class="brand-mark small">◈</span><span>mcpack</span></div>
+      <span id="network-badge" class="chip"></span>
     </div>
-    <div id="server-list"></div>
-  </div>
+    <input type="search" id="server-search" class="search" data-i18n-placeholder="webpanel.search_servers" />
+    <nav id="server-list" aria-label="servers"></nav>
+    <div class="sidebar-foot">
+      <span id="conn-status" class="muted small"></span>
+      <button class="btn ghost small hidden" id="btn-logout" data-i18n="webpanel.btn.logout"></button>
+    </div>
+  </aside>
+  <div id="scrim" class="hidden"></div>
 
-  <div id="main">
-    <div id="empty-state">Soldan bir pack seçin.</div>
+  <main id="main">
+    <header id="topbar">
+      <button class="btn ghost icon" id="btn-menu" data-i18n-title="webpanel.menu" aria-label="menu">☰</button>
+      <div class="title-block">
+        <h2 id="server-name">—</h2>
+        <div class="meta" id="server-meta"></div>
+      </div>
+      <div class="chips">
+        <span class="chip" id="status-pill"></span>
+        <span class="chip" id="state-pill"></span>
+      </div>
+      <div class="actions" id="action-row">
+        <button class="btn" id="btn-prepare" data-i18n="webpanel.btn.prepare"></button>
+        <button class="btn hidden" id="btn-install" data-i18n="webpanel.btn.install"></button>
+        <button class="btn primary" id="btn-start" data-i18n="webpanel.btn.start"></button>
+        <button class="btn danger" id="btn-stop" data-i18n="webpanel.btn.stop"></button>
+      </div>
+    </header>
 
-    <div id="server-view" class="hidden" style="display:flex; flex-direction:column; height:100%;">
-      <div id="main-header">
-        <div>
-          <h2 id="server-name">—</h2>
-          <div class="meta" id="server-meta">—</div>
+    <div id="empty-state" class="empty">
+      <div class="empty-icon">🖥</div>
+      <p data-i18n="webpanel.empty_state"></p>
+    </div>
+
+    <section id="server-view" class="hidden">
+      <div id="mods-bar" class="notice info small"></div>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="console" data-i18n="webpanel.tab.console"></button>
+        <button class="tab" data-tab="players" data-i18n="webpanel.tab.players"></button>
+        <button class="tab" data-tab="settings" data-i18n="webpanel.tab.settings"></button>
+        <button class="tab" data-tab="properties" data-i18n="webpanel.tab.properties"></button>
+        <button class="tab" data-tab="logs" data-i18n="webpanel.tab.logs"></button>
+        <button class="tab" data-tab="diagnostics" data-i18n="webpanel.tab.diagnostics"></button>
+      </nav>
+
+      <!-- konsol -->
+      <div class="pane active" id="pane-console">
+        <div class="toolbar">
+          <select id="console-filter">
+            <option value="0" data-i18n="webpanel.console.filter_all"></option>
+            <option value="1" data-i18n="webpanel.console.filter_warn"></option>
+            <option value="2" data-i18n="webpanel.console.filter_error"></option>
+          </select>
+          <input type="search" id="console-find" class="grow" data-i18n-placeholder="webpanel.console.find" />
+          <label class="check"><input type="checkbox" id="auto-scroll" checked /> <span data-i18n="webpanel.label.auto_scroll"></span></label>
+          <span class="muted small" id="console-count"></span>
+          <button class="btn ghost small" id="btn-copy-console" data-i18n="webpanel.btn.copy"></button>
+          <button class="btn ghost small" id="btn-download-console" data-i18n="webpanel.btn.download"></button>
+          <button class="btn ghost small" id="btn-clear-console" data-i18n="webpanel.btn.clear_console"></button>
         </div>
-        <span class="status-pill stopped" id="status-pill">Durduruldu</span>
-        <div id="action-row">
-          <button id="btn-prepare">Hazırla / Güncelle</button>
-          <button id="btn-install" class="hidden">Kur (installServer)</button>
-          <button id="btn-start" class="primary">Başlat</button>
-          <button id="btn-stop" class="danger">Durdur</button>
-        </div>
+        <div id="console" class="console" role="log" aria-live="off"></div>
+        <div class="quick" id="quick-commands"><span class="muted small" data-i18n="webpanel.console.quick"></span></div>
+        <form class="command-row" id="command-form">
+          <span class="prompt">›</span>
+          <input type="text" id="command-input" list="command-list" autocomplete="off" data-i18n-placeholder="webpanel.command_placeholder" disabled />
+          <datalist id="command-list"></datalist>
+          <button class="btn primary" id="btn-send-command" type="submit" data-i18n="webpanel.btn.send" disabled></button>
+        </form>
       </div>
 
-      <div id="mods-bar">
-        <span id="mods-bar-title">Modlar (sunucuda çalışacak): —</span>
-        <span id="mods-bar-list"></span>
-        <span id="mods-bar-excluded" class="meta"></span>
-      </div>
-
-      <div id="tabs">
-        <button class="tab-button active" data-tab="console">Konsol</button>
-        <button class="tab-button" data-tab="players">Oyuncular</button>
-        <button class="tab-button" data-tab="settings">Ayarlar</button>
-      </div>
-
-      <div id="tab-content">
-        <div class="tab-pane active" id="tab-console">
-          <div id="console-toolbar">
-            <button id="btn-clear-console">Konsolu Temizle</button>
-            <label class="inline"><input type="checkbox" id="auto-scroll" checked /> <span id="auto-scroll-label">Otomatik Kaydır</span></label>
-          </div>
-          <div id="console"></div>
-          <div id="command-row">
-            <input type="text" id="command-input" placeholder="Sunucu komutu yazın (ör. say merhaba, op <isim>) — ↑/↓ ile geçmiş..." disabled />
-            <button id="btn-send-command" disabled>Gönder</button>
-          </div>
-        </div>
-
-        <div class="tab-pane" id="tab-players">
-          <div id="players-layout">
-            <div id="players-list">
-              <div class="meta" style="margin-bottom:8px;" id="players-online-label">Çevrimiçi Oyuncular</div>
-              <div id="players-list-items"></div>
-              <button id="btn-refresh-players" style="width:100%; margin-top:8px;">Listeyi Yenile</button>
+      <!-- oyuncular -->
+      <div class="pane" id="pane-players">
+        <div class="players-layout">
+          <div class="card">
+            <div class="card-head">
+              <h3 data-i18n="webpanel.players.online_title"></h3>
+              <button class="btn ghost small" id="btn-refresh-players" data-i18n="webpanel.btn.refresh_players"></button>
             </div>
-            <div id="players-detail">
-              <p class="meta" id="players-empty">Bir oyuncu seçin.</p>
-              <div id="players-detail-body" class="hidden">
+            <div id="players-list" class="list"></div>
+          </div>
+          <div class="players-detail">
+            <p class="muted" id="players-empty" data-i18n="webpanel.players.select_prompt"></p>
+            <div id="players-detail-body" class="hidden">
+              <div class="card">
+                <h3 id="player-name">—</h3>
                 <div class="action-grid">
-                  <button id="p-heal">İyileştir</button>
-                  <button id="p-kill" class="danger">Öldür</button>
-                  <button id="p-feed">Doyur</button>
-                  <button id="p-damage">Hasar Ver</button>
-                  <input type="number" id="p-damage-amount" class="amount-input" value="4" min="1" />
-                  <button id="p-hunger" title="Vanilla'da açlığı anında belirli bir değere ayarlamanın bir yolu yok — bu, süre boyunca normalden daha hızlı acıktırır.">Açlığı Azalt</button>
-                  <input type="number" id="p-hunger-seconds" class="amount-input" value="30" min="5" />
+                  <button class="btn" data-action="heal" data-i18n="webpanel.btn.heal"></button>
+                  <button class="btn" data-action="feed" data-i18n="webpanel.btn.feed"></button>
+                  <button class="btn danger" data-action="kill" data-i18n="webpanel.btn.kill"></button>
+                  <span class="inline-field">
+                    <button class="btn" data-action="damage" data-i18n="webpanel.btn.damage"></button>
+                    <input type="number" id="p-damage-amount" value="4" min="1" max="1000" />
+                  </span>
+                  <span class="inline-field">
+                    <button class="btn" data-action="hunger" data-i18n="webpanel.btn.hunger" data-i18n-title="webpanel.hunger.tooltip"></button>
+                    <input type="number" id="p-hunger-seconds" value="30" min="5" max="300" />
+                  </span>
                 </div>
-
+                <div class="action-grid">
+                  <button class="btn chip-btn" data-cmd="op {p}" data-i18n="webpanel.btn.op"></button>
+                  <button class="btn chip-btn" data-cmd="deop {p}" data-i18n="webpanel.btn.deop"></button>
+                  <button class="btn chip-btn" data-cmd="gamemode creative {p}">creative</button>
+                  <button class="btn chip-btn" data-cmd="gamemode survival {p}">survival</button>
+                  <button class="btn chip-btn" data-cmd="kick {p}" data-i18n="webpanel.btn.kick"></button>
+                </div>
+              </div>
+              <div class="grid-2">
                 <div class="card">
-                  <h3 id="inventory-card-title">Envanter (zırh + ikinci el dahil) — salt okunur</h3>
-                  <button id="btn-view-inventory">Envanteri Görüntüle</button>
-                  <table class="item-table" id="inventory-table" style="margin-top:10px;">
-                    <thead><tr><th id="th-inv-section">Bölüm</th><th id="th-inv-item">Eşya</th><th id="th-inv-count">Adet</th></tr></thead>
+                  <div class="card-head">
+                    <h3 data-i18n="webpanel.inventory.title"></h3>
+                    <button class="btn small" id="btn-view-inventory" data-i18n="webpanel.btn.view_inventory"></button>
+                  </div>
+                  <table class="table" id="inventory-table">
+                    <thead><tr><th data-i18n="webpanel.table.section"></th><th data-i18n="webpanel.table.item"></th><th data-i18n="webpanel.table.count"></th></tr></thead>
                     <tbody></tbody>
                   </table>
                 </div>
-
                 <div class="card">
-                  <h3 id="ender-card-title">Ender Sandığı — salt okunur</h3>
-                  <button id="btn-view-ender">Ender Sandığını Görüntüle</button>
-                  <table class="item-table" id="ender-table" style="margin-top:10px;">
-                    <thead><tr><th id="th-ender-slot">Slot</th><th id="th-ender-item">Eşya</th><th id="th-ender-count">Adet</th></tr></thead>
+                  <div class="card-head">
+                    <h3 data-i18n="webpanel.ender.title"></h3>
+                    <button class="btn small" id="btn-view-ender" data-i18n="webpanel.btn.view_ender"></button>
+                  </div>
+                  <table class="table" id="ender-table">
+                    <thead><tr><th data-i18n="webpanel.table.slot"></th><th data-i18n="webpanel.table.item"></th><th data-i18n="webpanel.table.count"></th></tr></thead>
                     <tbody></tbody>
                   </table>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div class="tab-pane" id="tab-settings">
-          <div class="card">
-            <h3 id="runtime-settings-title">Çalışma Ayarları</h3>
-            <div class="settings-grid">
-              <label for="mem-preset" id="label-memory">Bellek (RAM)</label>
-              <div>
-                <select id="mem-preset"></select>
-                <input type="number" id="mem-custom" class="hidden" style="width:100px; margin-left:8px;" />
-              </div>
-              <div class="full" id="memory-info"></div>
-
-              <label for="world-select" id="label-world">Dünya</label>
-              <select id="world-select"><option value="">(dünya yok)</option></select>
-
-              <label for="optimized-flags" id="label-performance">Performans</label>
-              <label class="inline" style="display:inline-flex; gap:6px;">
-                <input type="checkbox" id="optimized-flags" /> <span id="optimized-flags-label">Performans bayraklarını kullan (Aikar's flags)</span>
-              </label>
-
-              <div class="full"><button class="primary" id="btn-save-settings">Ayarları Kaydet</button></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3>server.properties</h3>
-            <div class="settings-grid" id="properties-grid"></div>
-            <div style="margin-top:14px;"><button class="primary" id="btn-save-properties">server.properties'i Kaydet</button></div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
+
+      <!-- ayarlar -->
+      <div class="pane" id="pane-settings">
+        <div class="card narrow">
+          <h3 data-i18n="webpanel.settings.runtime_title"></h3>
+          <div class="form">
+            <label for="mem-preset" data-i18n="webpanel.settings.memory_label"></label>
+            <div class="row">
+              <select id="mem-preset"></select>
+              <input type="number" id="mem-custom" class="hidden" min="512" step="256" />
+            </div>
+            <div class="full muted small" id="memory-info"></div>
+            <label for="world-select" data-i18n="webpanel.settings.world_label"></label>
+            <select id="world-select"></select>
+            <label for="optimized-flags" data-i18n="webpanel.settings.performance_label"></label>
+            <label class="check"><input type="checkbox" id="optimized-flags" /> <span data-i18n="webpanel.settings.optimized_flags_label"></span></label>
+            <div class="full"><button class="btn primary" id="btn-save-settings" data-i18n="webpanel.btn.save_settings"></button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- server.properties -->
+      <div class="pane" id="pane-properties">
+        <div class="card narrow">
+          <h3>server.properties</h3>
+          <div class="form" id="properties-grid"></div>
+          <div class="row end"><button class="btn primary" id="btn-save-properties" data-i18n="webpanel.btn.save_properties"></button></div>
+        </div>
+      </div>
+
+      <!-- uygulama logları -->
+      <div class="pane" id="pane-logs">
+        <div class="toolbar">
+          <select id="log-level">
+            <option value="10">≥ DEBUG</option>
+            <option value="20" selected>≥ INFO</option>
+            <option value="30">≥ WARNING</option>
+            <option value="40">≥ ERROR</option>
+          </select>
+          <input type="search" id="log-search" class="grow" data-i18n-placeholder="webpanel.logs.search" />
+          <button class="btn ghost small" id="btn-log-pause" data-i18n="webpanel.logs.pause"></button>
+          <button class="btn ghost small" id="btn-log-download" data-i18n="webpanel.btn.download"></button>
+        </div>
+        <div id="log-view" class="console logs"></div>
+      </div>
+
+      <!-- teşhis -->
+      <div class="pane" id="pane-diagnostics">
+        <div class="row end"><button class="btn ghost small" id="btn-diag-refresh" data-i18n="webpanel.diag.refresh"></button></div>
+        <div class="grid-2">
+          <div class="card">
+            <h3 data-i18n="webpanel.diag.system"></h3>
+            <table class="table kv" id="sys-table"><tbody></tbody></table>
+          </div>
+          <div class="card">
+            <h3 data-i18n="webpanel.diag.exceptions"></h3>
+            <div id="exc-list" class="list"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h3 data-i18n="webpanel.diag.network"></h3>
+            <span class="muted small" id="net-stats"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="table" id="net-table">
+              <thead><tr><th>time</th><th>method</th><th>status</th><th>ms</th><th>host</th><th>path</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
 </div>
 
-<div id="toast"></div>
-
+<div id="toasts" aria-live="polite"></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

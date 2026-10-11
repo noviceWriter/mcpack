@@ -55,6 +55,9 @@ class Settings(BaseModel):
     exclude_saves: bool = True
     theme: str = "dark"
     """Tek desteklenen tema koyudur."""
+    debug_mode: bool = False
+    """Açıksa uygulama DEBUG log seviyesiyle başlar (bkz. logging_setup.py)
+    — Geliştirici sayfasından çalışma anında da açılıp kapatılabilir."""
     language: str = "tr"
     """Arayüz dili ("tr" veya "en") — bkz. mcpack.i18n. Değişiklik
     sadece uygulama yeniden başlatılınca etkili olur."""
@@ -83,8 +86,34 @@ class Settings(BaseModel):
             settings = cls.model_validate_json(path.read_text(encoding="utf-8"))
             settings.theme = "dark"
             return settings
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as exc:
+            from mcpack.logging_setup import get_logger
+
+            get_logger(__name__).warning("Ayar dosyası bozuk, varsayılanlar kullanılıyor: %s (%s)", path, exc)
             return cls()
+
+    def backup_file(self) -> Path | None:
+        """Mevcut settings.json'u settings.backup-<zaman>.json olarak kopyalar
+        (ayarlar sıfırlanmadan önce — işlem geri alınabilsin diye)."""
+        import shutil
+        from datetime import datetime
+
+        path = config_dir() / SETTINGS_FILE
+        if not path.exists():
+            return None
+        backup = config_dir() / f"settings.backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+        shutil.copy2(path, backup)
+        return backup
+
+    @classmethod
+    def defaults(cls, *, keep_secrets_from: Settings | None = None) -> Settings:
+        """Varsayılan ayarlar. keep_secrets_from verilirse CurseForge API
+        anahtarı ve web paneli şifresi oradan korunur."""
+        fresh = cls()
+        if keep_secrets_from is not None:
+            fresh.curseforge_api_key = keep_secrets_from.curseforge_api_key
+            fresh.web_panel_password = keep_secrets_from.web_panel_password
+        return fresh
 
     def save(self) -> None:
         path = config_dir() / SETTINGS_FILE

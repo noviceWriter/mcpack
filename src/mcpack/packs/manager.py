@@ -29,6 +29,10 @@ from mcpack.packs import storage
 from mcpack.sources.base import ModDetail, ModSource, ModVersion
 from mcpack.sources.cheat_mods import CheatModUnavailableError, find_meteor_download, find_wurst_download
 
+from mcpack.logging_setup import get_logger
+
+log = get_logger(__name__)
+
 _CONTENT_SUBDIR: dict[ContentKind, str] = {
     ContentKind.SHADERPACK: "shaderpacks",
     ContentKind.RESOURCEPACK: "resourcepacks",
@@ -115,6 +119,7 @@ class PackManager:
             summary=summary,
         )
         storage.save_pack(pack, self.packs_dir)
+        log.info("Pack oluşturuldu: %s (%s, %s %s, MC %s)", pack.name, pack.id, loader.value, loader_version, minecraft)
         return pack
 
     def list_packs(self) -> list[Pack]:
@@ -122,7 +127,8 @@ class PackManager:
         for path in storage.list_pack_files(self.packs_dir):
             try:
                 packs.append(storage.load_pack(path))
-            except ValueError:
+            except (ValueError, OSError) as exc:
+                log.warning("Pack dosyası okunamadı, atlanıyor: %s (%s)", path.name, exc)
                 continue  # bozuk/eksik JSON, listelemeyi durdurmasın
         return packs
 
@@ -134,6 +140,7 @@ class PackManager:
         storage.save_pack(pack, self.packs_dir)
 
     def delete(self, pack_id: str) -> None:
+        log.info("Pack siliniyor: %s", pack_id)
         storage.delete_pack(pack_id, self.packs_dir)
         # pack.json silinince content/<pack_id>/'ye kopyalanmış dünya/shader/
         # resourcepack/datapack dosyaları yetim kalıp diskte sonsuza kadar
@@ -307,11 +314,13 @@ class PackManager:
             pack.mods.remove(existing)
         pack.mods.append(entry)
         self.save(pack)
+        log.info("Mod eklendi: %s [%s] -> %s", entry.name or entry.file_name, entry.source.value, pack.name)
         return entry
 
     def remove_mod(self, pack: Pack, project_id: str) -> None:
         pack.mods = [m for m in pack.mods if m.project_id != project_id]
         self.save(pack)
+        log.info("Mod kaldırıldı: %s <- %s", project_id, pack.name)
 
     _CHEAT_MOD_LABELS = {ModSourceType.WURST: "Wurst Client", ModSourceType.METEOR: "Meteor Client"}
     _CHEAT_MOD_PROJECT_IDS = {ModSourceType.WURST: "wurst", ModSourceType.METEOR: "meteor"}
@@ -425,6 +434,10 @@ class PackManager:
                 if d.dependency_type == "required" and d.project_id and d.project_id not in visited
             )
 
+        log.debug(
+            "Bağımlılık çözümü %s: %d eklendi, %d çözülemedi %s",
+            version.project_id, len(resolved), len(failed_names), failed_names,
+        )
         return resolved, failed_names
 
     def find_missing_dependencies(self, pack: Pack) -> list[tuple[str, str]]:
@@ -584,4 +597,5 @@ class PackManager:
             if src_path.exists():
                 self.add_content(new_pack, entry.kind, src_path, display_name=entry.name)
 
+        log.info("Fork tamamlandı: %s -> %s (MC %s), %d atlandı", pack.name, new_pack.name, minecraft, len(failed))
         return new_pack, failed

@@ -1,37 +1,14 @@
-"""GUI giriş noktası."""
+"""GUI giriş noktası (`mcpack` komutu) — asıl kurulum gui/app.py'de."""
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
-
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
-
-from mcpack.config import Settings
-from mcpack.gui.main_window import MainWindow
-from mcpack.i18n import set_language
-
-
-def _icon_path() -> Path:
-    """PyInstaller ile paketlenmişse sys._MEIPASS altındaki assets/ (bkz.
-    scripts/build.py --add-data), aksi halde paketin kendi assets/ klasörü
-    (known_mods.py:_data_dir ile aynı desen)."""
-    frozen_base = getattr(sys, "_MEIPASS", None)
-    if frozen_base:
-        return Path(frozen_base) / "assets" / "icon.png"
-    return Path(__file__).parent / "assets" / "icon.png"
 
 
 def main() -> None:
-    set_language(Settings.load().language)
-    app = QApplication(sys.argv)
-    icon_path = _icon_path()
-    if icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
-    window = MainWindow()  # kendi __init__'inde Settings.theme'e göre stylesheet uygular
-    window.show()
-    sys.exit(app.exec())
+    from mcpack.gui.app import run
+
+    sys.exit(run())
 
 
 if __name__ == "__main__":

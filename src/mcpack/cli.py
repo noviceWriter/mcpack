@@ -270,9 +270,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    from mcpack.logging_setup import install_exception_hooks, setup_logging
+
     parser = build_parser()
+    parser.add_argument("--debug", action="store_true", help="Ayrıntılı (DEBUG) loglama")
     args = parser.parse_args()
     settings = Settings.load()
+    # CLI çıktısı kullanıcıya print ile gidiyor; stderr'e sadece uyarı+ üstü
+    # (debug'da her şey) düşsün, tam kayıt her zaman log dosyasında.
+    setup_logging(debug=args.debug or settings.debug_mode or None)
+    install_exception_hooks()
     asyncio.run(args.func(args, settings))
 
 

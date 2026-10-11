@@ -33,6 +33,10 @@ from mcpack.i18n import t
 from mcpack.models import Pack
 from mcpack.server_jar import ServerDownload, ServerDownloadError, get_server_download
 
+from mcpack.logging_setup import get_logger
+
+log = get_logger(__name__)
+
 SYSTEM_MEMORY_RESERVE_MB = 2048
 """Kullanıcı isteği: "16 GB RAM'i olan birinin bilgisayarı en fazla 14 GB
 kullansın, kullanıcıya en az 2 GB bıraksın" — sunucuya ayrılabilecek üst
@@ -142,6 +146,7 @@ async def prepare_server(
     export/server.py'deki filter_server_mods/ensure_server_file_downloaded
     ile BİREBİR aynı mantığı kullanır — zip'e gömülen ile burada çalıştırılan
     sunucu dosyası aynı kod yolundan geçer, aralarında sürüklenme olmaz."""
+    log.info("Sunucu hazırlanıyor: %s -> %s", pack.name, server_root)
     server_root.mkdir(parents=True, exist_ok=True)
     mods_dir = server_root / "mods"
     mods_dir.mkdir(exist_ok=True)
@@ -168,6 +173,7 @@ async def prepare_server(
     except DownloadCancelledError:
         raise
     except (ServerDownloadError, httpx.HTTPError) as exc:
+        log.error("Sunucu dosyası indirilemedi (%s %s %s): %s", pack.minecraft, pack.loader.value, pack.loader_version, exc)
         raise ServerRuntimeError(
             t(
                 "runtime.error.server_file_download_failed",
@@ -226,6 +232,7 @@ async def run_installer(installer_path: Path, server_root: Path, java_path: str)
     doğrulamayla kontrol edilir) tüm çıktı toplanıp döner; sıfır olmayan
     çıkış kodunda son satırlarla birlikte ServerRuntimeError fırlatır."""
     lines: list[str] = []
+    log.info("Installer çalıştırılıyor: %s (java=%s)", installer_path.name, java_path)
     process = await _run_subprocess_streaming(
         [java_path, "-jar", str(installer_path), "--installServer"],
         cwd=server_root,
@@ -233,6 +240,7 @@ async def run_installer(installer_path: Path, server_root: Path, java_path: str)
     )
     if process.returncode != 0:
         tail = "\n".join(lines[-20:])
+        log.error("Installer başarısız (kod %s):\n%s", process.returncode, tail)
         raise ServerRuntimeError(
             t("runtime.error.install_failed", returncode=process.returncode, tail=tail)
         )
@@ -546,6 +554,7 @@ class ServerProcess(QObject):
     def start(self, cmd: list[str], *, cwd: Path) -> None:
         if self.is_running:
             raise ServerRuntimeError(t("runtime.error.already_running"))
+        log.info("Sunucu süreci başlatılıyor: %s (cwd=%s)", " ".join(cmd), cwd)
         self._process = subprocess.Popen(
             cmd,
             cwd=str(cwd),
@@ -555,7 +564,8 @@ class ServerProcess(QObject):
             text=True,
             bufsize=1,
         )
-        self._reader_thread = threading.Thread(target=self._read_output, daemon=True)
+        log.info("Sunucu süreci başladı (pid=%s)", self._process.pid)
+        self._reader_thread = threading.Thread(target=self._read_output, daemon=True, name=f"server-reader-{self._process.pid}")
         self._reader_thread.start()
 
     def _read_output(self) -> None:
@@ -569,6 +579,11 @@ class ServerProcess(QObject):
             self._notify_waiters(line)
             self._notify_listeners(line)
         returncode = process.wait()
+        if returncode == 0:
+            log.info("Sunucu süreci kapandı (pid=%s, kod 0)", process.pid)
+        else:
+            tail = "\n".join(list(self.buffer)[-15:])
+            log.error("Sunucu süreci hata koduyla kapandı (pid=%s, kod %s). Son satırlar:\n%s", process.pid, returncode, tail)
         self.process_exited.emit(returncode)
         self._notify_listeners(None)  # akışın bittiğini düz-Python dinleyicilere bildir
 
@@ -602,6 +617,7 @@ class ServerProcess(QObject):
     def send_command(self, text: str) -> None:
         if not self.is_running or self._process is None or self._process.stdin is None:
             raise ServerRuntimeError(t("runtime.error.not_running_cant_send"))
+        log.debug("Sunucu komutu: %s", text)
         self._process.stdin.write(text + "\n")
         self._process.stdin.flush()
 
@@ -635,6 +651,7 @@ class ServerProcess(QObject):
         dolarsa son çare olarak terminate() çağrılır."""
         if not self.is_running or self._process is None:
             return
+        log.info("Sunucu durduruluyor (pid=%s, zaman aşımı %ss)", self._process.pid, timeout)
         try:
             self.send_command("stop")
         except ServerRuntimeError:
@@ -643,6 +660,7 @@ class ServerProcess(QObject):
         try:
             self._process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
+            log.warning("Sunucu %ss içinde kapanmadı, terminate() gönderiliyor (pid=%s)", timeout, self._process.pid)
             self._process.terminate()
 
 

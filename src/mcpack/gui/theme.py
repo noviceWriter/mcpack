@@ -1,357 +1,278 @@
-"""MC Pack Manager için renk paletleri (açık ve koyu tema).
+"""Tasarım belirteçleri (renk, boşluk, yarıçap) + uygulama geneli QSS.
 
-color.md'de tanımlı renk paleti: tema seçimi için _CATEGORY_COLORS haricinde
-her şey burada. Kullanıcı geri bildirimi: düzeltme1.md.
+Tüm renkler burada TEK YERDE tanımlanır; widget'lar renkleri asla elle
+yazmaz, `COLORS[...]` ya da QSS'teki dinamik özellikleri (`role`, `tone`,
+`variant`) kullanır. Kategorik renkler (kaynak/loader) CVD-güvenli bir
+paletten seçildi; durum renkleri (success/warning/danger) metinde değil
+nokta/çip/şerit gibi işaretlerde kullanılır.
 """
 
 from __future__ import annotations
 
-# Kategorik rozet renkleri (kaynak: Modrinth/CurseForge, loader: Fabric/Quilt/
-# Forge/NeoForge) — dataviz skill'inin doğrulanmış, CVD-güvenli 8 renkli
-# kategorik paletinden (references/palette.md) alındı: sabit sıra, mavi
-# (accent) ve kırmızı (danger/critical durum rengi) ile çakışmasın diye
-# atlandı. Modrinth/CurseForge kendi gerçek marka renklerine en yakın
-# slot'larla eşleşti (yeşil/turuncu). Kaynak ve loader rozetleri arayüzde
-# hiçbir zaman aynı anda/yan yana görünmediği için palet sırasını ikisi de
-# baştan kullanabildi; NeoForge'un CurseForge ile aynı turuncuyu paylaşması
-# bu yüzden çakışma yaratmıyor (ikisi de gerçek markasıyla örtüşüyor).
-_CATEGORY_COLORS: dict[str, str] = {
-    "modrinth": "#199e70",
-    "curseforge": "#d95926",
-    "vanilla": "#6b7280",
-    "fabric": "#c98500",
-    "quilt": "#d55181",
-    "forge": "#9085e9",
-    "neoforge": "#d95926",
+from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtWidgets import QApplication
+
+COLORS: dict[str, str] = {
+    "bg": "#0f1115",
+    "surface": "#151820",
+    "surface_2": "#1b1f29",
+    "elevated": "#222735",
+    "hover": "#262c3b",
+    "border": "#262b37",
+    "border_strong": "#353c4d",
+    "text": "#e7e9ef",
+    "text_muted": "#9aa3b4",
+    "text_dim": "#6c7486",
+    "accent": "#6d8cff",
+    "accent_hover": "#859fff",
+    "accent_press": "#5874e0",
+    "accent_soft": "#1d2647",
+    "on_accent": "#ffffff",
+    "success": "#3ccf91",
+    "success_soft": "#13301f",
+    "warning": "#f5b544",
+    "warning_soft": "#33280f",
+    "danger": "#f2555a",
+    "danger_soft": "#3a1719",
+    "info": "#4fb6f0",
+    "info_soft": "#112b3b",
+    "console_bg": "#0a0c10",
+    "selection": "#2a3560",
 }
 
-DARK_PALETTE = {
-    "accent": "#5b8def",
-    "accent_dim": "#3d6bb3",
-    "bg": "#191a1d",
-    "panel_bg": "#232428",
-    "field_bg": "#2b2d31",
-    "border": "#34363b",
-    "text": "#e3e3e6",
-    "text_muted": "#8a8d93",
-    "hover_bg": "#2f333a",
-    "alt_row_bg": "#26282c",
-    "scrollbar_handle": "#3a3d41",
-    "scrollbar_handle_hover": "#4a4d54",
-    "selected_bg": "#28344a",  # yumuşak koyu lacivert ton (solid canlı mavi dolgu DEĞİL — düzeltme2.md)
-    "selected_text": "#cfe0ff",  # açık mavi-beyaz, okunaklı ama göz yormayan
-    "selected_stripe": "#5b8def",
-    "on_accent_text": "#ffffff",
-    "disabled_text": "#6b6f76",
-    "danger_text": "#d03b3b",  # dataviz skill durum paleti: critical (temalar arası sabit)
-    "status_good": "#0ca30c",  # dataviz skill durum paleti: good
-    "status_warning": "#f97316",
-    "warning_box_bg": "#3f2d0a",
-    "warning_box_text": "#fbbf24",
-    "accent_purple": "#9085e9",
-    "accent_cyan": "#22b8cf",
-    "accent_pink": "#e87ba4",
-    "button_border": "#34363b",
-    "button_hover_border": "#4a4d54",
-    "chip_bg": "#2f333a",
-    "chip_text": "#cfd2d6",
-    "icon_placeholder_bg": "#2b2d31",
+CATEGORY_COLORS: dict[str, str] = {
+    "modrinth": "#1bd96a",
+    "curseforge": "#f16436",
+    "wurst": "#d55181",
+    "meteor": "#9085e9",
+    "vanilla": "#7d8798",
+    "fabric": "#dbb36b",
+    "quilt": "#c873d6",
+    "forge": "#6b8cff",
+    "neoforge": "#f08a4b",
 }
 
-# Açık tema paleti - color.md'ye ve düzeltme1.md'ye göre
-LIGHT_PALETTE = {
-    "accent": "#3b82f6",  # Canlı Mavi — birincil buton arka planı
-    "accent_dim": "#2563eb",  # birincil buton hover'ı / seçili öğe sol şeridi
-    "bg": "#f8f9fa",  # Ana arka plan (Body) — saf beyaz göz yorar
-    "panel_bg": "#ffffff",  # Kart/Panel arka planı
-    "field_bg": "#ffffff",
-    "border": "#e5e7eb",
-    "text": "#1f2937",  # Koyu Antrasit — saf siyah yerine
-    "text_muted": "#6b7280",  # İkincil metin
-    "hover_bg": "#f3f4f6",
-    "alt_row_bg": "#f9fafb",
-    "scrollbar_handle": "#d1d5db",
-    "scrollbar_handle_hover": "#9ca3af",
-    "selected_bg": "#eff6ff",  # Seçili öğe — çok açık, yumuşak mavi
-    "selected_text": "#1d4ed8",  # Koyu mavi, okunaklı
-    "selected_stripe": "#3b82f6",  # Seçili öğenin sol kenarındaki 4px şerit
-    "on_accent_text": "#ffffff",
-    "disabled_text": "#9ca3af",
-    "danger_text": "#ef4444",  # Tehlike/İptal metni
-    "status_good": "#16a34a",  # dataviz skill durum paleti: good
-    "status_warning": "#f97316",
-    "warning_box_bg": "#fef3c7",  # Uyarı/bilgi kutusu
-    "warning_box_text": "#92400e",
-    "accent_purple": "#7c3aed",  # öne çıkan/kategori
-    "accent_cyan": "#0891b2",  # info/tooltip
-    "accent_pink": "#db2777",  # favori/popüler
-    "button_border": "#d1d5db",  # ikincil buton kenarlığı
-    "button_hover_border": "#9ca3af",
-    "chip_bg": "#f3f4f6",
-    "chip_text": "#374151",
-    "icon_placeholder_bg": "#f3f4f6",
+LEVEL_COLORS: dict[str, str] = {
+    "DEBUG": COLORS["text_dim"],
+    "INFO": COLORS["text_muted"],
+    "WARNING": COLORS["warning"],
+    "ERROR": COLORS["danger"],
+    "CRITICAL": "#ff3b6b",
 }
 
-def _build_stylesheet(p: dict[str, str]) -> str:
+TONES = {
+    "neutral": (COLORS["elevated"], COLORS["text_muted"]),
+    "accent": (COLORS["accent_soft"], COLORS["accent_hover"]),
+    "success": (COLORS["success_soft"], COLORS["success"]),
+    "warning": (COLORS["warning_soft"], COLORS["warning"]),
+    "danger": (COLORS["danger_soft"], COLORS["danger"]),
+    "info": (COLORS["info_soft"], COLORS["info"]),
+}
+
+RADIUS = 10
+MONO_FAMILIES = ["JetBrains Mono", "Cascadia Code", "Fira Code", "DejaVu Sans Mono", "Consolas", "monospace"]
+
+
+def category_color(key: str) -> str:
+    return CATEGORY_COLORS.get(key, COLORS["text_dim"])
+
+
+def readable_on(color_hex: str) -> str:
+    return "#10131a" if QColor(color_hex).lightness() > 150 else "#ffffff"
+
+
+def mono_font(point_size: int = 10) -> QFont:
+    font = QFont()
+    font.setFamilies(MONO_FAMILIES)
+    font.setStyleHint(QFont.StyleHint.Monospace)
+    font.setPointSize(point_size)
+    return font
+
+
+def _asset(name: str) -> str:
+    """QSS url() için mutlak, ileri eğik çizgili yol (PyInstaller'da _MEIPASS/assets)."""
+    import sys
+    from pathlib import Path
+
+    base = getattr(sys, "_MEIPASS", None)
+    root = Path(base) / "assets" if base else Path(__file__).resolve().parent.parent / "assets"
+    return (root / name).as_posix()
+
+
+def _qss() -> str:
+    c = COLORS
     return f"""
+* {{ outline: none; }}
 QWidget {{
-    background-color: {p['bg']};
-    color: {p['text']};
+    background-color: transparent;
+    color: {c['text']};
     font-size: 13px;
+    selection-background-color: {c['selection']};
+    selection-color: {c['text']};
 }}
-QMainWindow, QDialog {{
-    background-color: {p['bg']};
-}}
-
-QGroupBox {{
-    background-color: {p['panel_bg']};
-    border: 1px solid {p['border']};
-    border-radius: 12px;
-    margin-top: 14px;
-    padding: 12px 10px 10px 10px;
-    font-weight: 600;
-}}
-QGroupBox::title {{
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    left: 10px;
-    top: -2px;
-    padding: 0 4px;
-    color: {p['accent']};
+QMainWindow, QDialog, #AppRoot {{ background-color: {c['bg']}; }}
+QToolTip {{
+    background-color: {c['elevated']}; color: {c['text']};
+    border: 1px solid {c['border_strong']}; border-radius: 6px; padding: 6px 8px;
 }}
 
-QListWidget, QTableWidget, QTreeWidget, QLineEdit, QTextEdit, QComboBox {{
-    background-color: {p['field_bg']};
-    border: 1px solid {p['border']};
-    border-radius: 10px;
-    padding: 4px;
-    selection-background-color: {p['selected_bg']};
+/* ---- kenar çubuğu ---- */
+#Sidebar {{ background-color: {c['surface']}; border-right: 1px solid {c['border']}; }}
+#SidebarBrand {{ font-size: 15px; font-weight: 700; padding: 4px 6px; }}
+#SidebarCaption {{ color: {c['text_dim']}; font-size: 11px; font-weight: 600; padding: 10px 10px 4px 10px; }}
+QPushButton[variant="nav"] {{
+    text-align: left; padding: 9px 12px; border: none; border-radius: 8px;
+    background: transparent; color: {c['text_muted']}; font-weight: 500;
 }}
-QLineEdit, QComboBox {{
-    padding: 6px 8px;
-}}
-QLineEdit:focus, QComboBox:focus, QTextEdit:focus {{
-    border: 1px solid {p['accent']};
-}}
-QListWidget::item, QTableWidget::item {{
-    padding: 3px;
-    border: none;
-    border-radius: 6px;
-}}
-QListWidget::item {{
-    border-left: 4px solid transparent;
-}}
-QListWidget::item:selected {{
-    background-color: {p['selected_bg']};
-    color: {p['selected_text']};
-    border-left: 4px solid {p['selected_stripe']};
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
-}}
-QTableWidget::item:selected {{
-    background-color: {p['selected_bg']};
-    color: {p['selected_text']};
-}}
-QListWidget::item:hover, QTableWidget::item:hover {{
-    background-color: {p['hover_bg']};
-}}
-QTableWidget {{
-    gridline-color: {p['border']};
-    alternate-background-color: {p['alt_row_bg']};
-}}
-QTableWidget::item {{
-    border-bottom: 1px solid {p['border']};
-    border-radius: 0px;
+QPushButton[variant="nav"]:hover {{ background-color: {c['hover']}; color: {c['text']}; }}
+QPushButton[variant="nav"]:checked {{
+    background-color: {c['accent_soft']}; color: {c['text']}; font-weight: 600;
 }}
 
-QPushButton {{
-    background-color: {p['field_bg']};
-    border: 1px solid {p['button_border']};
-    border-radius: 9px;
-    padding: 7px 16px;
+/* ---- butonlar ---- */
+QPushButton, QToolButton {{
+    background-color: {c['surface_2']}; color: {c['text']};
+    border: 1px solid {c['border_strong']}; border-radius: 8px; padding: 7px 14px;
 }}
-QPushButton:hover {{
-    background-color: {p['hover_bg']};
-    border: 1px solid {p['button_hover_border']};
-}}
-QPushButton:pressed {{
-    background-color: {p['accent_dim']};
-    color: {p['on_accent_text']};
-    border: 1px solid {p['accent_dim']};
-}}
-QPushButton:disabled {{
-    color: {p['disabled_text']};
-    background-color: {p['field_bg']};
-}}
+QPushButton:hover, QToolButton:hover {{ background-color: {c['hover']}; border-color: #46506a; }}
+QPushButton:pressed, QToolButton:pressed {{ background-color: {c['elevated']}; }}
+QPushButton:disabled, QToolButton:disabled {{ color: {c['text_dim']}; background-color: {c['surface']}; border-color: {c['border']}; }}
+QPushButton[variant="primary"] {{ background-color: {c['accent']}; color: {c['on_accent']}; border: 1px solid {c['accent']}; font-weight: 600; }}
+QPushButton[variant="primary"]:hover {{ background-color: {c['accent_hover']}; border-color: {c['accent_hover']}; }}
+QPushButton[variant="primary"]:pressed {{ background-color: {c['accent_press']}; }}
+QPushButton[variant="primary"]:disabled {{ background-color: {c['accent_soft']}; color: {c['text_dim']}; border-color: {c['accent_soft']}; }}
+QPushButton[variant="danger"] {{ background-color: {c['danger_soft']}; color: {c['danger']}; border: 1px solid #5a2427; }}
+QPushButton[variant="danger"]:hover {{ background-color: #4a1d20; }}
+QPushButton[variant="ghost"], QToolButton[variant="ghost"] {{ background: transparent; border: 1px solid transparent; color: {c['text_muted']}; }}
+QPushButton[variant="ghost"]:hover, QToolButton[variant="ghost"]:hover {{ background-color: {c['hover']}; color: {c['text']}; }}
+QPushButton[variant="chip"] {{ padding: 4px 10px; border-radius: 13px; font-size: 12px; background: {c['surface_2']}; color: {c['text_muted']}; }}
+QPushButton[variant="chip"]:checked {{ background: {c['accent_soft']}; color: {c['text']}; border-color: {c['accent']}; }}
+QToolButton::menu-indicator {{ image: none; width: 0; }}
 
-QPushButton#primary {{
-    background-color: {p['accent']};
-    border: 1px solid {p['accent']};
-    color: {p['on_accent_text']};
-    font-weight: 600;
+/* ---- giriş alanları ---- */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit {{
+    background-color: {c['surface']}; border: 1px solid {c['border_strong']};
+    border-radius: 8px; padding: 6px 10px; color: {c['text']};
 }}
-QPushButton#primary:hover {{
-    background-color: {p['accent_dim']};
-    border: 1px solid {p['accent_dim']};
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus {{ border-color: {c['accent']}; }}
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {{ color: {c['text_dim']}; background-color: {c['bg']}; }}
+QLineEdit[variant="search"] {{ padding-left: 30px; border-radius: 17px; }}
+QComboBox::drop-down {{ border: none; width: 22px; }}
+QComboBox::down-arrow {{ image: url("{_asset('chevron-down.svg')}"); width: 12px; height: 12px; margin-right: 8px; }}
+QSpinBox::up-arrow, QSpinBox::down-arrow {{ width: 0; height: 0; }}
+QComboBox QAbstractItemView {{
+    background-color: {c['elevated']}; border: 1px solid {c['border_strong']}; border-radius: 8px;
+    selection-background-color: {c['selection']}; padding: 4px;
 }}
-QPushButton#danger {{
-    color: {p['danger_text']};
-}}
+QSpinBox::up-button, QSpinBox::down-button {{ width: 16px; border: none; background: transparent; }}
+QCheckBox {{ spacing: 8px; }}
+QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 4px; border: 1px solid {c['border_strong']}; background: {c['surface']}; }}
+QCheckBox::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']}; }}
+QCheckBox::indicator:hover {{ border-color: {c['accent']}; }}
 
+/* ---- kartlar / paneller ---- */
+QFrame[card="true"] {{ background-color: {c['surface']}; border: 1px solid {c['border']}; border-radius: {RADIUS}px; }}
+QFrame[card="hover"] {{ background-color: {c['surface']}; border: 1px solid {c['border']}; border-radius: {RADIUS}px; }}
+QFrame[card="hover"]:hover {{ background-color: {c['surface_2']}; border-color: {c['border_strong']}; }}
+QFrame[card="selected"] {{ background-color: {c['surface_2']}; border: 1px solid {c['accent']}; border-radius: {RADIUS}px; }}
+QFrame[separator="true"] {{ background-color: {c['border']}; max-height: 1px; min-height: 1px; border: none; }}
+QLabel[role="title"] {{ font-size: 22px; font-weight: 700; }}
+QLabel[role="h2"] {{ font-size: 16px; font-weight: 700; }}
+QLabel[role="h3"] {{ font-size: 13px; font-weight: 700; }}
+QLabel[role="muted"] {{ color: {c['text_muted']}; }}
+QLabel[role="dim"] {{ color: {c['text_dim']}; font-size: 12px; }}
+QLabel[role="stat"] {{ font-size: 24px; font-weight: 700; }}
+QLabel[role="kbd"] {{ background: {c['elevated']}; border: 1px solid {c['border_strong']}; border-radius: 4px; padding: 1px 6px; color: {c['text_muted']}; font-size: 11px; }}
+QLabel[role="notice"] {{ background: {c['warning_soft']}; color: {c['warning']}; border: 1px solid #5a4516; border-radius: 8px; padding: 10px 12px; }}
+QLabel[role="notice-danger"] {{ background: {c['danger_soft']}; color: {c['danger']}; border: 1px solid #5a2427; border-radius: 8px; padding: 10px 12px; }}
+QLabel[role="notice-info"] {{ background: {c['info_soft']}; color: {c['info']}; border: 1px solid #1d4a63; border-radius: 8px; padding: 10px 12px; }}
+
+/* ---- tablolar / listeler ---- */
+QTableView, QTreeView, QListView, QListWidget, QTableWidget, QTreeWidget {{
+    background-color: {c['surface']}; alternate-background-color: {c['surface_2']};
+    border: 1px solid {c['border']}; border-radius: {RADIUS}px; gridline-color: transparent;
+}}
+QTableView::item, QTreeView::item, QListView::item, QListWidget::item, QTableWidget::item {{ padding: 6px 8px; border: none; }}
+QTableView::item:selected, QTreeView::item:selected, QListView::item:selected, QListWidget::item:selected, QTableWidget::item:selected {{
+    background-color: {c['selection']}; color: {c['text']};
+}}
+QTableView::item:hover, QTreeView::item:hover, QListView::item:hover, QListWidget::item:hover {{ background-color: {c['hover']}; }}
+QHeaderView {{ background: transparent; }}
 QHeaderView::section {{
-    background-color: {p['panel_bg']};
-    color: {p['text_muted']};
-    border: none;
-    border-bottom: 1px solid {p['border']};
-    border-right: 1px solid {p['border']};
-    padding: 5px;
-    font-weight: 600;
+    background-color: {c['surface']}; color: {c['text_muted']}; font-weight: 600; font-size: 12px;
+    border: none; border-bottom: 1px solid {c['border']}; padding: 8px;
 }}
-QTableCornerButton::section {{
-    background-color: {p['panel_bg']};
-    border: none;
+QTableCornerButton::section {{ background: {c['surface']}; border: none; }}
+
+/* ---- sekmeler ---- */
+QTabWidget::pane {{ border: none; top: -1px; }}
+QTabBar {{ background: transparent; }}
+QTabBar::tab {{
+    background: transparent; color: {c['text_muted']}; padding: 8px 14px; margin-right: 2px;
+    border: none; border-bottom: 2px solid transparent; font-weight: 500;
+}}
+QTabBar::tab:hover {{ color: {c['text']}; }}
+QTabBar::tab:selected {{ color: {c['text']}; border-bottom: 2px solid {c['accent']}; font-weight: 600; }}
+
+/* ---- kaydırma çubukları ---- */
+QScrollArea {{ border: none; background: transparent; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: {c['border_strong']}; border-radius: 4px; min-height: 28px; }}
+QScrollBar::handle:vertical:hover {{ background: #4a5268; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar::handle:horizontal {{ background: {c['border_strong']}; border-radius: 4px; min-width: 28px; }}
+QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page {{ width: 0; height: 0; background: none; }}
+
+/* ---- menü / ilerleme / durum çubuğu ---- */
+QMenu {{ background-color: {c['elevated']}; border: 1px solid {c['border_strong']}; border-radius: 8px; padding: 5px; }}
+QMenu::item {{ padding: 7px 18px 7px 12px; border-radius: 5px; }}
+QMenu::item:selected {{ background-color: {c['selection']}; }}
+QMenu::item:disabled {{ color: {c['text_dim']}; }}
+QMenu::separator {{ height: 1px; background: {c['border']}; margin: 4px 6px; }}
+QProgressBar {{ background-color: {c['surface_2']}; border: none; border-radius: 4px; height: 8px; text-align: center; color: transparent; }}
+QProgressBar::chunk {{ background-color: {c['accent']}; border-radius: 4px; }}
+QStatusBar {{ background-color: {c['surface']}; border-top: 1px solid {c['border']}; color: {c['text_muted']}; }}
+QStatusBar::item {{ border: none; }}
+QStatusBar QPushButton {{ padding: 2px 10px; border-radius: 6px; font-size: 12px; background: transparent; border: 1px solid transparent; color: {c['text_muted']}; }}
+QStatusBar QPushButton:hover {{ background: {c['hover']}; color: {c['text']}; }}
+QSplitter::handle {{ background: {c['border']}; }}
+QSplitter::handle:horizontal {{ width: 1px; }}
+QSplitter::handle:vertical {{ height: 1px; }}
+
+/* ---- konsol ---- */
+QPlainTextEdit[variant="console"], QTextEdit[variant="console"] {{
+    background-color: {c['console_bg']}; border: 1px solid {c['border']}; border-radius: {RADIUS}px;
+    padding: 8px; color: #cfd6e4;
 }}
 
-QSplitter::handle {{
-    background-color: {p['bg']};
-    width: 4px;
-}}
+/* ---- toast ---- */
+QFrame[toast="true"] {{ background-color: {c['elevated']}; border: 1px solid {c['border_strong']}; border-radius: 10px; }}
 
-QProgressBar {{
-    border: 1px solid {p['border']};
-    border-radius: 8px;
-    text-align: center;
-    background-color: {p['field_bg']};
-}}
-QProgressBar::chunk {{
-    background-color: {p['accent']};
-    border-radius: 7px;
-}}
-
-QLabel[role="heading"] {{
-    font-weight: 700;
-    font-size: 14px;
-    padding: 2px 0;
-    color: {p['text']};
-}}
-QLabel[role="muted"] {{
-    color: {p['text_muted']};
-    font-size: 12px;
-}}
-QLabel#warningBox {{
-    background-color: {p['warning_box_bg']};
-    color: {p['warning_box_text']};
-    border-radius: 8px;
-    padding: 10px 12px;
-}}
-
-QMenuBar, QToolBar {{
-    background-color: {p['panel_bg']};
-    border-bottom: 1px solid {p['border']};
-    spacing: 6px;
-}}
-QMenuBar::item:selected {{
-    background-color: {p['hover_bg']};
-}}
-QMenu {{
-    background-color: {p['panel_bg']};
-    border: 1px solid {p['border']};
-    border-radius: 10px;
-}}
-QMenu::item:selected {{
-    background-color: {p['accent_dim']};
-    color: {p['on_accent_text']};
-    border-radius: 6px;
-}}
-
-QStatusBar {{
-    background-color: {p['panel_bg']};
-    border-top: 1px solid {p['border']};
-}}
-
-QScrollBar:vertical {{
-    background-color: {p['bg']};
-    width: 10px;
-    margin: 0;
-}}
-QScrollBar::handle:vertical {{
-    background-color: {p['scrollbar_handle']};
-    border-radius: 5px;
-    min-height: 24px;
-}}
-QScrollBar::handle:vertical:hover {{
-    background-color: {p['scrollbar_handle_hover']};
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-    height: 0;
-}}
+/* ---- komut paleti ---- */
+#Palette {{ background-color: {c['surface']}; border: 1px solid {c['border_strong']}; border-radius: 14px; }}
+#Palette QLineEdit {{ font-size: 15px; padding: 12px 14px; border: none; border-bottom: 1px solid {c['border']}; border-radius: 0; background: transparent; }}
+#Palette QListWidget {{ border: none; background: transparent; }}
 """
 
 
-DARK_STYLESHEET = _build_stylesheet(DARK_PALETTE)
-LIGHT_STYLESHEET = _build_stylesheet(LIGHT_PALETTE)
-
-THEMES = {"dark": DARK_STYLESHEET, "light": LIGHT_STYLESHEET}
-PALETTES = {"dark": DARK_PALETTE, "light": LIGHT_PALETTE}
-
-_active_theme = "dark"
-
-
-def set_active_theme(theme_name: str) -> None:
-    global _active_theme
-    _active_theme = theme_name if theme_name in PALETTES else "dark"
-
-
-def stylesheet_for(theme_name: str) -> str:
-    return THEMES.get(theme_name, DARK_STYLESHEET)
-
-
-def chip_colors() -> tuple[str, str]:
-    """(arka_plan, metin) — mod tablosundaki 'Ortam' rozeti için."""
-    p = PALETTES[_active_theme]
-    return p["chip_bg"], p["chip_text"]
-
-
-def icon_placeholder_bg() -> str:
-    return PALETTES[_active_theme]["icon_placeholder_bg"]
-
-
-def status_good_color() -> str:
-    """"Başarılı/eklendi" gibi durum göstergeleri için — kategorik renklerden
-    (ör. Modrinth yeşili) AYRI tutulur, aksi halde bir durum rengi yanlışlıkla
-    bir kategoriyle karıştırılabilir."""
-    return PALETTES[_active_theme]["status_good"]
-
-
-def danger_color() -> str:
-    return DARK_PALETTE["danger_text"]
-
-
-def apply_card_shadow(widget) -> None:
-    """Panellere (QGroupBox'lar) referans tasarımdaki gibi hafif bir
-    yükselti/gölge verir — QSS'in box-shadow'u olmadığı için
-    QGraphicsDropShadowEffect ile emüle ediyoruz."""
-    from PySide6.QtGui import QColor
-    from PySide6.QtWidgets import QGraphicsDropShadowEffect
-
-    effect = QGraphicsDropShadowEffect(widget)
-    effect.setBlurRadius(22)
-    effect.setXOffset(0)
-    effect.setYOffset(3)
-    effect.setColor(QColor(0, 0, 0, 45))
-    widget.setGraphicsEffect(effect)
-
-
-def _category_color(key: str) -> str:
-    color = _CATEGORY_COLORS.get(key)
-    if color is None:
-        return PALETTES[_active_theme]["text_muted"]
-    return color
-
-
-def source_color(value: str) -> str:
-    return _category_color(value)
-
-
-def loader_color(value: str) -> str:
-    return _category_color(value)
+def apply_theme(app: QApplication) -> None:
+    app.setStyle("Fusion")
+    palette = QPalette()
+    c = COLORS
+    palette.setColor(QPalette.ColorRole.Window, QColor(c["bg"]))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(c["text"]))
+    palette.setColor(QPalette.ColorRole.Base, QColor(c["surface"]))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(c["surface_2"]))
+    palette.setColor(QPalette.ColorRole.Text, QColor(c["text"]))
+    palette.setColor(QPalette.ColorRole.Button, QColor(c["surface_2"]))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(c["text"]))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(c["selection"]))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(c["text"]))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(c["elevated"]))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(c["text"]))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(c["text_dim"]))
+    palette.setColor(QPalette.ColorRole.Link, QColor(c["accent_hover"]))
+    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(c["text_dim"]))
+    app.setPalette(palette)
+    app.setStyleSheet(_qss())

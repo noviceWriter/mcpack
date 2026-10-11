@@ -37,60 +37,86 @@ Overwolf (CurseForge) ya da Modrinth ile bir bağlantısı ya da onayı yoktur.
 
 ## 2. İlk Açılış
 
-Program açıldığında karşınıza **Kütüphane** sayfası çıkar — buradaki her
-satır sizin oluşturduğunuz bir "pack"tir (mod paketi). İlk açılışta liste
-boştur.
+Program solda bir **kenar çubuğu** ile açılır: **Ana Sayfa**, **Kütüphane**,
+açık olan pack, **Ayarlar** ve **Geliştirici**. Her yerden **Ctrl+K** ile
+komut paletini açıp sayfa, pack ya da eylem arayabilirsiniz.
 
-- **+ Yeni Pack**: yeni bir mod paketi oluşturur. İsim, Minecraft
-  versiyonu, loader (Fabric/Quilt/Forge/NeoForge — mod eklemek istemiyorsanız
-  "Vanilla" seçin) ve isteğe bağlı yazar/açıklama istenir.
-- Arama kutusu: çok sayıda pack biriktiyse isme göre filtreler.
-- Her satırdaki **Aç** butonu o pack'in detay sayfasını açar, **Sil** kalıcı
-  olarak siler (onay ister).
+- **Ana Sayfa**: pack/mod sayıları, çalışan sunucular, son düzenlenen
+  pack'ler, sistem sağlığı (Java, CurseForge anahtarı, SKLauncher) ve
+  hızlı erişim düğmeleri.
+- **Kütüphane**: tüm pack'ler kart ızgarası ya da liste olarak (☰ düğmesi).
+  Arama, loader filtresi (Fabric/Forge/…) ve sıralama (son düzenlenen, ad,
+  mod sayısı, MC sürümü) var. Karta tıklamak pack'i açar; sağ tık ya da
+  **⋯** menüsü: bilgileri düzenle, kopyala, fork, dışa aktar, klasörleri
+  aç, sil.
+- **+ Yeni Pack** (Ctrl+N): ad, Minecraft sürümü, loader ve loader sürümü.
+  Sürümler resmi listelerden gelir; en yeni ve sağlayıcının **★ önerilen**
+  sürümü işaretlenir.
 
-## 3. Pack Detay Sayfası (Instance Sayfası)
+Alt durum çubuğunda o an çalışan görev (ilerleme çubuğu ve **İptal**
+düğmesiyle), uyarı/hata sayaçları (⚠/✖, tıklayınca log görüntüleyici
+açılır) ve web panelinin durumu görünür. Bildirimler sağ altta kısa süreli
+kutucuklar (toast) olarak çıkar; hata bildirimlerindeki **Ayrıntılar**
+düğmesi doğrudan ilgili log/istisnayı açar.
 
-Bir pack'i açtığınızda solda dikey bir bölüm listesi görürsünüz:
+## 3. Pack Sayfası
+
+Bir pack'i açtığınızda üstte başlık ve **Dışa Aktar ▾** menüsü, solda
+bölümler bulunur:
+
+- **Genel Bakış**: mod/içerik sayıları, sadece-istemci ve sunucu modları,
+  indirme boyutu, pack bilgileri ve **bağımlılık sağlığı** (eksik zorunlu
+  bağımlılıklar çevrimdışı olarak hemen gösterilir; **Bağımlılıkları Kontrol
+  Et** adlarını ağdan çözer).
 
 ### 3.1 Modlar
-- **+ Mod Ekle** ile Modrinth/CurseForge'ta arama yapıp pack'e mod
-  eklersiniz. Arama penceresi ayrı bir pencere olarak açılır, ana pencereyle
-  birlikte açık tutup art arda mod ekleyebilirsiniz.
-- Bir mod eklendiğinde, o modun opsiyonel bağımlılıkları varsa "Önerilen
-  Modlar" penceresi açılır — istediklerinizi işaretleyip ekleyebilirsiniz.
-- Tablodaki **Ortam** sütunu modun istemci/sunucu gereksinimini gösterir
-  (İstemci / Sunucu / İstemci + Sunucu). CurseForge bu bilgiyi her zaman
-  doğru vermeyebilir — yanlışsa satırı seçip **İstemci/Sunucu Düzelt** ile
-  elle düzeltebilirsiniz.
-- Sütun başlıklarına tıklayarak sıralayabilir, arama kutusuyla filtreleyebilirsiniz.
-- **Vanilla** pack'lerde bu bölüm boştur (loader olmadığı için mod eklenemez)
-  — shader/görüntü paketi/datapack/dünya ise loader gerektirmediğinden vanilla
-  pack'lere de eklenebilir.
+- Tablo: ad, kaynak, ortam (İstemci / Sunucu / İstemci + Sunucu), dosya,
+  boyut, bağımlılık. Sütun başlığına tıklayarak sıralanır; metin, kaynak ve
+  ortam filtresi vardır (**Eksik bağımlılığı olan** filtresi sorunlu modları
+  tek tıkla gösterir).
+- **Çoklu seçim** (Ctrl/Shift) ile birden çok modu aynı anda kaldırabilir
+  ya da ortamını düzeltebilirsiniz. **Delete** tuşu kaldırır; kaldırılan
+  modlara bağımlı başka modlar varsa ayrıca uyarılırsınız.
+- Sağ tık: istemci/sunucu düzelt, proje sayfasını aç, proje ID'si / dosya
+  adı / indirme URL'si kopyala. Çift tıklama ortam düzenleyicisini açar.
 
-### 3.2 Shader Paketleri / Görüntü Paketleri / Datapack'ler
-Üçü de aynı akışla çalışır: **+ Ekle** ile Modrinth/CurseForge'ta arayıp
-pack'e eklersiniz (gerçek dosya, export anında indirilir). Kaldırmak için
-tablodan seçip **Seçiliyi Kaldır**.
+### 3.2 Keşfet (mod / shader / kaynak paketi / datapack / dünya ekleme)
+- Üstteki çiplerle içerik türünü seçin, arayın (boş arama popülerleri
+  listeler). Sonuçlar sonsuz kaydırmalıdır.
+- Sağ panelde seçili projenin ayrıntısı: **En Yeni Sürümü Ekle**, **Sürüm
+  Seç…** (tüm uyumlu sürümler tablo halinde: MC sürümleri, loader, boyut,
+  zorunlu bağımlılık sayısı) ve **Tarayıcıda aç**. Çift tıklama hızlı ekler.
+- Zorunlu bağımlılıklar otomatik eklenir; uyumlu sürümü olmayan zorunlu
+  bağımlılık varsa uyarılırsınız. Opsiyonel bağımlılıklar "Önerilen Modlar"
+  penceresinde size sorulur.
+- Dünyalar sadece CurseForge'ta bulunur (API anahtarı gerekir).
+
+### 3.3 Shader / Kaynak Paketi / Datapack
+Eklenenler kendi bölümlerinde listelenir; çoklu seçimle kaldırılabilir,
+**Keşfet'te Ara** ilgili türü doğrudan açar.
 
 > Not: Minecraft datapack'leri sadece bir dünya kaydının içinden çalışır.
 > Eklediğiniz bir datapack'in export'ta işe yaraması için pack'inize
-> **bir dünya da eklemiş olmanız** gerekir (bkz. 3.3).
+> **bir dünya da eklemiş olmanız** gerekir (bkz. 3.4).
 
-### 3.3 Dünyalar
+### 3.4 Dünyalar
 İki yol vardır:
-- **+ Dünya Klasörü Seç**: diskinizdeki hazır bir dünya kaydını (içinde
+- **+ Klasörden Dünya Ekle**: diskinizdeki hazır bir dünya kaydını (içinde
   `level.dat` olan klasör, genelde `.minecraft/saves/<dünya adı>`) seçip
-  pack'e kopyalar.
-- **+ CurseForge'ta Dünya Ara**: CurseForge'ta hazır bir harita/dünya arayıp
-  indirir (Modrinth'te "dünya" diye bir proje türü olmadığı için bu yol
-  sadece CurseForge'ta çalışır).
+  pack'e kopyalar. `level.dat` yoksa eklemeden önce uyarılırsınız.
+- **CurseForge'ta Ara**: CurseForge'ta hazır bir harita/dünya arayıp indirir.
 
 Birden fazla dünya yükleyebilirsiniz; hangisinin sunucu paketine
 ekleneceği export sırasında ayrıca sorulur (bkz. 4.2).
 
+### 3.5 Sunucu
+Yerel sunucu yönetimi bu bölümdedir — ayrıntılar için bkz. 4.4.
+
 ## 4. Dışa Aktarma
 
-Sağ üstteki format kutusundan birini seçip **Dışa Aktar**'a basın:
+Pack sayfasının sağ üstündeki **Dışa Aktar ▾** menüsünden bir format seçin
+(dışa aktarmadan önce eksik zorunlu bağımlılıklar kontrol edilir; ek
+config/kubejs dosyaları — overrides — eklemek isteyip istemediğiniz sorulur):
 
 | Format | Nereye import edilir |
 |---|---|
@@ -150,15 +176,18 @@ hiç gitmeden çalıştırır:
    SİZİN kararınızdır. Java sisteminizde yoksa ya da PATH'te
    bulunamıyorsa Ayarlar'dan **Java Yolu**'nu elle belirtebilirsiniz.
 4. **Canlı + renkli konsol**: sunucunun gerçek log çıktısı anlık olarak
-   ekranda akar (HATA satırları kırmızı, UYARI satırları turuncu);
-   **Konsolu Temizle**, konsolda **Ara**, ve **Otomatik Kaydır**
-   (kapatırsanız yeni satırlar gelince sayfa aşağı zıplamaz, eski loga
-   rahat bakabilirsiniz) araçları var. Alttaki kutudan sunucuya komut
+   ekranda akar (HATA kırmızı, UYARI turuncu, sohbet mavi, giriş/çıkış
+   yeşil). **Seviye filtresi** (tüm satırlar / uyarı+ / sadece hata),
+   eşleşmeleri vurgulayan **arama** (▲/▼ ile önceki/sonraki), **Otomatik
+   kaydır**, **Satır kaydır**, kopyala / dosyaya kaydet / temizle ve hızlı
+   komut düğmeleri (gündüz, hava, save-all, list…) var. Komut kutusu
+   vanilla komutlarını otomatik tamamlar. Alttaki kutudan sunucuya komut
    yazıp (ör. `op <isim>`, `say merhaba`) **Gönder**'e basabilir, **↑/↓**
    ile daha önce gönderdiğiniz komutlar arasında (terminal gibi)
    gezinebilirsiniz.
-5. **Oyuncular paneli**: sunucu çalışırken çevrimiçi oyuncular ~4
-   saniyede bir otomatik listelenir (ya da **Listeyi Yenile**'ye basın).
+5. **Oyuncular sekmesi**: sekme açıkken çevrimiçi oyuncular ~5 saniyede
+   bir otomatik listelenir (ya da **Yenile**'ye basın). OP ver/al, oyun
+   modu ve at (kick) kısayolları da vardır.
    Bir oyuncu seçince, komut yazmadan: **İyileştir**, **Öldür**, **Hasar
    Ver** (miktar girilebilir — MC 1.19.4+'ta tam isabetli, öncesinde
    yaklaşık), **Doyur**, **Açlığı Azalt** (bu SADECE süre boyunca daha
@@ -192,8 +221,10 @@ durdurulsun mu diye sorulur (sessizce öksüz bırakmaz).
 
 ### 4.5 Web Paneli (tarayıcıdan sunucu yönetimi)
 
-Araç çubuğundaki **"🌐 Web Paneli"** butonu, 4.4'teki sunucu yönetiminin
-AYNISINI (hazırla/kur/başlat/durdur/konsol/oyuncular/ayarlar) bir
+Kenar çubuğundaki **🌐 Web Panelini Aç** (ya da Ayarlar > Web paneli)
+düğmesi, 4.4'teki sunucu yönetiminin AYNISINI (hazırla/kur/başlat/durdur/
+konsol/oyuncular/ayarlar/server.properties) — artık uygulama logları ve
+teşhis sekmeleriyle birlikte — bir
 tarayıcı sekmesinde, daha modern bir arayüzle sunar — Qt'nin yerini almaz,
 sadece ek bir önyüzdür. Tekrar tıklayınca kapanır (**kullanıcı isterse
 tamamen kapatabilir** — açık bir ağ portu istemiyorsanız hiç başlatmayın).
@@ -207,24 +238,30 @@ tamamen kapatabilir** — açık bir ağ portu istemiyorsanız hiç başlatmayı
   Şifre girmeden ağa açık bir panel ASLA yayınlanmaz — aksi halde aynı
   ağdaki herkes (misafir WiFi'ı, güvenilmeyen biri) hiçbir onay sormadan
   sunucunuzu durdurabilir ya da oyuncu öldürebilirdi.
+- Ayarlardaki port başka bir program tarafından kullanılıyorsa panel
+  otomatik olarak sıradaki boş portta açılır ve portu hangi programın
+  tuttuğunu bildirir (ör. "8765 dolu — panel 8766'da açıldı").
 - Şifreyle giriş yapılınca tarayıcıda bir oturum çerezi tutulur; "Ayarlar
   > Port" ile hangi port kullanılacağını da değiştirebilirsiniz.
 
 ## 5. Ayarlar
 
-Sağ üstteki **⚙ Ayarlar**'dan:
-- **Dil**: arayüz dilini Türkçe/İngilizce arasında değiştirir — değişiklik
-  uygulamayı yeniden başlatınca etkili olur. Web Paneli (bkz. 4.5) de AYNI
-  dili otomatik kullanır, ayrıca bir ayara gerek yoktur.
-- **CurseForge API Key**: CurseForge aramasının çalışması için gerekir
-  (console.curseforge.com üzerinden kendi hesabınızla alınır). Girdikten
-  sonra **Bağlantıyı Test Et** ile gerçekten geçerli olup olmadığını
-  kontrol edebilirsiniz.
-- **Modrinth tercihi**: aynı mod iki kaynakta da varsa hangisinin tercih
-  edileceği.
-- **SKLauncher yolu**, **Java yolu** (bkz. 4.4 — boşsa PATH'teki `java`
-  kullanılır), **Web Paneli Şifresi/Port** (bkz. 4.5), **export'ta hariç
-  tutulacak klasörler** (logs, crash-reports, saves).
+Kenar çubuğundaki **⚙ Ayarlar** (Ctrl+,) sayfasında ayarlar kartlar
+halinde gruplanır; değişiklikler **Kaydet**'e basınca uygulanır (kaydedilmemiş
+değişiklik varsa başlıkta gösterilir, pencereyi kapatırken sorulur).
+- **Genel**: arayüz dili (yeniden başlatınca etkili olur; web paneli de aynı
+  dili kullanır) ve **Debug modu** (bkz. 7).
+- **Mod kaynakları**: CurseForge API anahtarı (**Test Et** ile doğrulanır),
+  Modrinth tercihi.
+- **Başlatıcı ve Java**: SKLauncher yolu, Java yolu (**Algıla** sürümü de
+  gösterir; boşsa PATH'teki `java`).
+- **Web paneli**: port, şifre, başlat/durdur (bkz. 4.5).
+- **Dışa aktarma**: logs / crash-reports / saves hariç tutma.
+- **Veri ve önbellek**: pack klasörü, önbellek boyutunu ölçme ve temizleme.
+- **Varsayılanlara Sıfırla** (sağ üst): tüm ayarları ilk kurulum değerlerine
+  döndürür. İsterseniz CurseForge anahtarı ve web paneli şifresi korunur.
+  Eski ayar dosyası önce `settings.backup-<zaman>.json` olarak yedeklenir;
+  pack'lerinize dokunulmaz.
 
 ## 6. Sık Sorulan Sorular
 
@@ -239,3 +276,36 @@ Hayır. Program hiçbir Mojang/Microsoft hesap bilgisi istemez ya da saklamaz.
 **"CurseForge/Modrinth çöktü, uygulama donmuş gibi görünüyor?"**
 Ağ hatalarında artık kısa, anlaşılır bir hata mesajı gösterilir; alttaki
 durum çubuğundaki **İptal** butonuyla uzun süren işlemleri durdurabilirsiniz.
+
+## 7. Loglar ve Hata Ayıklama
+
+Program her şeyi bir log dosyasına yazar:
+- Linux: `~/.config/mcpack/logs/mcpack.log` · Windows: `%APPDATA%\mcpack\logs\mcpack.log`
+  (2 MB'ta döner, 5 eski dosya saklanır).
+- Beklenmeyen bir çökme olursa `logs/crash/` altına sistem bilgisi ve son
+  log satırlarını içeren bir **crash raporu** yazılır.
+
+Kenar çubuğundaki **🐞 Geliştirici** (F12) sayfası:
+- **Loglar**: canlı log akışı — seviye, kaynak ve metin filtresi, duraklat,
+  kopyala, dışa aktar. Bir satıra tıklayınca tam mesaj ve traceback görünür.
+- **Görevler**: arka planda çalışan/çalışmış her işlem (indirme, export,
+  arama…) — durum, ilerleme, süre, hata ve traceback; buradan iptal
+  edilebilir.
+- **Ağ**: her HTTP isteği (yöntem, durum, süre, sunucu) ve istatistikler.
+  İstek başlıkları — dolayısıyla CurseForge anahtarınız — asla kaydedilmez.
+- **İstisnalar**: yakalanan/yakalanmayan tüm hatalar (tekrar sayısıyla) ve
+  crash raporları.
+- **Sistem**: sürüm/ortam bilgisi, canlı uygulama durumu, tek tıkla
+  **teşhis** (klasör izinleri, disk, Java, Modrinth/Mojang/Fabric/Forge
+  erişimi, CurseForge anahtarı, web paneli portu, pack dosyaları) ve
+  **Destek Paketi Oluştur** — loglar, crash raporları ve gizli bilgileri
+  maskelenmiş ayarları tek bir zip'te toplar; hata bildirirken ekleyin.
+- **Python** (sadece debug modunda): uygulamanın canlı nesnelerine erişen
+  geliştirici konsolu.
+
+**Debug modu**: Ayarlar'dan, Geliştirici > Loglar'daki DEBUG kutusundan,
+**Ctrl+Shift+D** ile, `mcpack --debug` ile ya da `MCPACK_DEBUG=1` ortam
+değişkeniyle açılır — her ağ isteği ve iç adım ayrıntılı loglanır.
+
+Web panelinde de **Uygulama Logları** ve **Teşhis** sekmeleri vardır
+(sistem bilgisi, ağ istekleri, son istisnalar).

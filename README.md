@@ -28,7 +28,7 @@ pip install -e ".[dev]"
 ## Çalıştırma
 
 ```bash
-mcpack            # GUI
+mcpack            # GUI  (mcpack --debug: ayrıntılı loglama)
 mcpack-cli --help # CLI
 ```
 
@@ -58,10 +58,20 @@ export'ta hariç tutulacak logs/crash-reports/saves) ya da doğrudan
 `~/.config/mcpack/settings.json` (Linux) / `%APPDATA%/mcpack/settings.json`
 (Windows) dosyasından yapılandırılır. API key koda gömülmez, repo dışında kalır.
 
+## Loglama ve hata ayıklama
+
+- Log dosyası: `~/.config/mcpack/logs/mcpack.log` (Windows: `%APPDATA%\mcpack\logs`),
+  çökmelerde `logs/crash/crash-*.txt`.
+- `mcpack --debug` ya da `MCPACK_DEBUG=1 mcpack` → ayrıntılı (DEBUG) loglama
+  ve Geliştirici sayfasında Python konsolu. `mcpack-cli --debug` CLI için.
+- GUI'de **Geliştirici** sayfası (F12): canlı loglar, görevler, ağ istekleri,
+  istisnalar, sistem teşhisi ve destek paketi (zip). Ayrıntı:
+  [KULLANIM-KILAVUZU.md §7](KULLANIM-KILAVUZU.md).
+
 ## Büyük pack'lerde iptal
 
-Export / server pack / SKLauncher instance hazırlama sırasında GUI'deki
-**İptal** butonu, devam eden indirmeleri chunk aralarında durdurur
+Export / server pack / SKLauncher instance hazırlama / sunucu hazırlama
+sırasında durum çubuğundaki (ya da Geliştirici > Görevler'deki) **İptal** butonu, devam eden indirmeleri chunk aralarında durdurur
 (kısmi `.part` dosyaları temizlenir).
 
 ## Klasör Yapısı
@@ -75,7 +85,12 @@ src/mcpack/
   sources/              # Modrinth + CurseForge API client'ları + birleşik arama
   packs/                 # Pack yönetimi (oluştur/kaydet/mod ekle-çıkar/env düzelt)
   export/                 # mrpack / CurseForge / Prism / server pack export
-  gui/                     # PySide6 arayüzü (Kütüphane sayfası + Instance sayfası)
+  logging_setup.py      # Merkezi loglama: dönen dosya, bellek tamponu, crash raporu, ağ/istisna kaydı
+  gui/                  # PySide6 arayüzü
+    controller.py       #   tüm iş mantığı (widget yok) + TaskManager görevleri
+    tasks.py            #   thread-safe arka plan görev yöneticisi (ilerleme/iptal/geçmiş)
+    pages/              #   Ana Sayfa, Kütüphane, Pack (Keşfet, Sunucu…), Ayarlar, Geliştirici
+  webpanel/             # FastAPI web paneli + static/ (tarayıcı arayüzü)
   cli.py               # Basit komut satırı arayüzü
 data/
   client_only_mods.json  # Server pack filtrelemesi için bilinen liste

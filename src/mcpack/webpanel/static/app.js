@@ -1,86 +1,51 @@
 "use strict";
+// mcpack web paneli — tek dosya, bağımlılıksız.
+// Güvenlik: sunucudan gelen HİÇBİR metin innerHTML ile basılmaz (konsol
+// satırları, oyuncu/pack adları, loglar) — her şey textContent/DOM ile.
 
 const GB_PRESETS = [1, 2, 3, 4, 6, 8, 10, 12, 16, 24, 32];
+const PLAYER_RE = /^[A-Za-z0-9_]{1,16}$/;
+const CONSOLE_MAX = 5000;
+const QUICK = ["time set day", "time set night", "weather clear", "save-all", "list", "difficulty peaceful"];
+const COMMANDS = ["say ", "tell ", "give ", "tp ", "gamemode ", "gamerule ", "time set ", "weather ", "difficulty ",
+  "op ", "deop ", "kick ", "ban ", "pardon ", "whitelist add ", "whitelist remove ", "list", "save-all", "stop", "seed",
+  "effect give ", "kill ", "summon ", "xp add ", "locate structure "];
+const LOADER_GLYPH = { vanilla: "🌱", fabric: "🧵", quilt: "🧶", forge: "🔨", neoforge: "🔥" };
+const LOADER_COLOR = { vanilla: "#7d8798", fabric: "#dbb36b", quilt: "#c873d6", forge: "#6b8cff", neoforge: "#f08a4b" };
 
-let currentServerId = null;
-let currentServer = null;
-let consoleSocket = null;
-let selectedPlayer = null;
-let commandHistory = [];
-let commandHistoryIndex = 0;
+const state = {
+  servers: [], currentId: null, current: null, socket: null, socketRetry: 0,
+  consoleLines: [], selectedPlayer: null, history: [], historyIndex: 0,
+  authRequired: false, logAfter: 0, logPaused: false, logEntries: [], activeTab: "console",
+};
 let STR = {};
 
-// -- i18n -----------------------------------------------------------------
-// Kendi çeviri tablosunu TUTMAZ — mcpack/i18n.py'deki tek STRINGS
-// sözlüğünün webpanel.* alt kümesini /api/strings'den alır (bkz. o
-// dosyadaki modül docstring'i ve strings_with_prefix()).
+// -- yardımcılar ------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
 
 function t(key, params) {
   let text = STR[key] || key;
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      text = text.replace(new RegExp(`\\{${k}\\}`, "g"), v);
-    }
-  }
+  if (params) for (const [k, v] of Object.entries(params)) text = text.split(`{${k}}`).join(String(v));
   return text;
 }
 
-async function loadStrings() {
-  const resp = await fetch("/api/strings", { credentials: "same-origin" });
-  const data = await resp.json();
-  STR = data.strings || {};
-  document.getElementById("html-root").lang = data.lang || "tr";
-  applyStaticStrings();
+function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) if (c != null) node.append(c);
+  return node;
 }
 
-function applyStaticStrings() {
-  document.getElementById("page-title").textContent = t("webpanel.app_title");
-  document.getElementById("login-heading").textContent = t("webpanel.app_title");
-  document.getElementById("login-subtitle").textContent = t("webpanel.login.subtitle");
-  document.getElementById("login-password").placeholder = t("webpanel.login.password_placeholder");
-  document.getElementById("login-button").textContent = t("webpanel.login.submit");
-  document.getElementById("empty-state").textContent = t("webpanel.empty_state");
-  document.getElementById("status-pill").textContent = t("webpanel.status.stopped");
-  document.getElementById("btn-prepare").textContent = t("webpanel.btn.prepare");
-  document.getElementById("btn-install").textContent = t("webpanel.btn.install");
-  document.getElementById("btn-start").textContent = t("webpanel.btn.start");
-  document.getElementById("btn-stop").textContent = t("webpanel.btn.stop");
-  document.querySelector('.tab-button[data-tab="console"]').textContent = t("webpanel.tab.console");
-  document.querySelector('.tab-button[data-tab="players"]').textContent = t("webpanel.tab.players");
-  document.querySelector('.tab-button[data-tab="settings"]').textContent = t("webpanel.tab.settings");
-  document.getElementById("btn-clear-console").textContent = t("webpanel.btn.clear_console");
-  document.getElementById("auto-scroll-label").textContent = t("webpanel.label.auto_scroll");
-  document.getElementById("command-input").placeholder = t("webpanel.command_placeholder");
-  document.getElementById("btn-send-command").textContent = t("webpanel.btn.send");
-  document.getElementById("players-online-label").textContent = t("webpanel.players.online_title");
-  document.getElementById("btn-refresh-players").textContent = t("webpanel.btn.refresh_players");
-  document.getElementById("players-empty").textContent = t("webpanel.players.select_prompt");
-  document.getElementById("p-heal").textContent = t("webpanel.btn.heal");
-  document.getElementById("p-kill").textContent = t("webpanel.btn.kill");
-  document.getElementById("p-feed").textContent = t("webpanel.btn.feed");
-  document.getElementById("p-damage").textContent = t("webpanel.btn.damage");
-  document.getElementById("p-hunger").textContent = t("webpanel.btn.hunger");
-  document.getElementById("p-hunger").title = t("webpanel.hunger.tooltip");
-  document.getElementById("inventory-card-title").textContent = t("webpanel.inventory.title");
-  document.getElementById("btn-view-inventory").textContent = t("webpanel.btn.view_inventory");
-  document.getElementById("th-inv-section").textContent = t("webpanel.table.section");
-  document.getElementById("th-inv-item").textContent = t("webpanel.table.item");
-  document.getElementById("th-inv-count").textContent = t("webpanel.table.count");
-  document.getElementById("ender-card-title").textContent = t("webpanel.ender.title");
-  document.getElementById("btn-view-ender").textContent = t("webpanel.btn.view_ender");
-  document.getElementById("th-ender-slot").textContent = t("webpanel.table.slot");
-  document.getElementById("th-ender-item").textContent = t("webpanel.table.item");
-  document.getElementById("th-ender-count").textContent = t("webpanel.table.count");
-  document.getElementById("runtime-settings-title").textContent = t("webpanel.settings.runtime_title");
-  document.getElementById("label-memory").textContent = t("webpanel.settings.memory_label");
-  document.getElementById("label-world").textContent = t("webpanel.settings.world_label");
-  document.getElementById("label-performance").textContent = t("webpanel.settings.performance_label");
-  document.getElementById("optimized-flags-label").textContent = t("webpanel.settings.optimized_flags_label");
-  document.getElementById("btn-save-settings").textContent = t("webpanel.btn.save_settings");
-  document.getElementById("btn-save-properties").textContent = t("webpanel.btn.save_properties");
+function toast(text, kind = "info") {
+  const node = el("div", { class: `toast ${kind}`, text });
+  $("toasts").append(node);
+  setTimeout(() => node.remove(), kind === "error" ? 8000 : 4000);
 }
-
-// -- yardımcılar --------------------------------------------------------------
 
 async function api(path, options = {}) {
   const resp = await fetch(path, {
@@ -88,496 +53,569 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  if (resp.status === 401) {
-    showLogin();
-    throw new Error(t("webpanel.error.login_required"));
-  }
+  if (resp.status === 401) { showLogin(); throw new Error(t("webpanel.error.login_required")); }
   let data = null;
-  try { data = await resp.json(); } catch (e) { /* boş gövde olabilir */ }
+  try { data = await resp.json(); } catch { /* boş gövde */ }
   if (!resp.ok) {
-    const detail = (data && data.detail) || `HTTP ${resp.status}`;
-    toast(detail, true);
-    throw new Error(detail);
+    const msg = (data && data.detail) || `HTTP ${resp.status}`;
+    toast(typeof msg === "string" ? msg : JSON.stringify(msg), "error");
+    throw new Error(msg);
   }
   return data;
 }
 
-function toast(text, isError) {
-  const el = document.getElementById("toast");
-  el.textContent = text;
-  el.classList.toggle("error", !!isError);
-  el.classList.add("show");
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.remove("show"), 3500);
+function download(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  const a = el("a", { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function el(tag, attrs = {}, children = []) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === "text") node.textContent = v;
-    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
-  }
-  for (const c of children) node.appendChild(c);
-  return node;
+function stamp() { return new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19); }
+
+// -- i18n -------------------------------------------------------------------
+async function loadStrings() {
+  const data = await (await fetch("/api/strings", { credentials: "same-origin" })).json();
+  STR = data.strings || {};
+  $("html-root").lang = data.lang || "tr";
+  document.title = t("webpanel.app_title");
+  document.querySelectorAll("[data-i18n]").forEach((n) => { n.textContent = t(n.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((n) => { n.placeholder = t(n.dataset.i18nPlaceholder); });
+  document.querySelectorAll("[data-i18n-title]").forEach((n) => { n.title = t(n.dataset.i18nTitle); });
 }
 
-// -- giriş ----------------------------------------------------------------
+// -- kimlik doğrulama ---------------------------------------------------------
+function showLogin() { $("app").classList.add("hidden"); $("login-screen").classList.remove("hidden"); $("login-password").focus(); }
+function showApp() { $("login-screen").classList.add("hidden"); $("app").classList.remove("hidden"); }
 
-function showLogin() {
-  document.getElementById("login-screen").classList.remove("hidden");
-  document.getElementById("app").classList.add("hidden");
-}
-
-function showApp() {
-  document.getElementById("login-screen").classList.add("hidden");
-  document.getElementById("app").classList.remove("hidden");
-}
-
-async function checkAuthAndStart() {
+async function boot() {
+  await loadStrings();
+  buildStatic();
   const status = await (await fetch("/api/auth/status", { credentials: "same-origin" })).json();
-  document.getElementById("network-badge").textContent = status.auth_required
-    ? t("webpanel.badge.network_exposed")
-    : t("webpanel.badge.local_only");
-  if (status.auth_required && !status.authenticated) {
-    showLogin();
-    return;
-  }
-  showApp();
-  await loadServers();
+  state.authRequired = status.auth_required;
+  $("btn-logout").classList.toggle("hidden", !status.auth_required);
+  const badge = $("network-badge");
+  badge.textContent = status.auth_required ? t("webpanel.badge.network_exposed") : t("webpanel.badge.local_only");
+  badge.className = `chip ${status.auth_required ? "warning" : "accent"}`;
+  if (status.authenticated) { showApp(); await loadServers(); await restoreFromHash(); } else showLogin();
+  setInterval(() => { if (!$("app").classList.contains("hidden")) loadServers(true); }, 5000);
 }
 
-document.getElementById("login-button").addEventListener("click", doLogin);
-document.getElementById("login-password").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") doLogin();
-});
-
-async function doLogin() {
-  const password = document.getElementById("login-password").value;
+$("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
   const resp = await fetch("/api/auth/login", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: $("login-password").value }),
   });
   if (!resp.ok) {
-    let data = null;
-    try { data = await resp.json(); } catch (e) { /* boş gövde olabilir */ }
-    document.getElementById("login-error").textContent =
-      (data && data.detail) || t("webpanel.error.wrong_password");
+    const data = await resp.json().catch(() => ({}));
+    $("login-error").textContent = data.detail || t("webpanel.error.wrong_password");
+    $("login-error").classList.remove("hidden");
     return;
   }
-  document.getElementById("login-error").textContent = "";
+  $("login-error").classList.add("hidden");
+  $("login-password").value = "";
   showApp();
   await loadServers();
+  await restoreFromHash();
+});
+
+// URL karması (#pack=<id>&tab=<sekme>): sayfa yenilenince seçim korunur,
+// belirli bir sunucuya doğrudan bağlantı verilebilir.
+function writeHash() {
+  if (!state.currentId) return;
+  history.replaceState(null, "", `#pack=${encodeURIComponent(state.currentId)}&tab=${state.activeTab}`);
+}
+async function restoreFromHash() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const id = params.get("pack");
+  const tab = params.get("tab");
+  if (tab && document.querySelector(`.tab[data-tab="${CSS.escape(tab)}"]`)) state.activeTab = tab;
+  if (id && state.servers.some((s) => s.id === id)) await selectServer(id);
 }
 
-// -- sunucu listesi ---------------------------------------------------------
+$("btn-logout").addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+  closeSocket(); showLogin();
+});
 
-async function loadServers() {
-  const servers = await api("/api/servers");
-  const list = document.getElementById("server-list");
-  list.innerHTML = "";
-  for (const s of servers) {
-    const row = el("div", {
-      class: "server-row" + (s.id === currentServerId ? " active" : ""),
+// -- statik parçalar ----------------------------------------------------------
+function buildStatic() {
+  const quick = $("quick-commands");
+  for (const cmd of QUICK) quick.append(el("button", { class: "btn chip-btn", text: cmd, type: "button", onclick: () => sendCommand(cmd) }));
+  const list = $("command-list");
+  for (const c of COMMANDS) list.append(el("option", { value: c }));
+  document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+}
+
+// -- sunucu listesi -----------------------------------------------------------
+async function loadServers(silent) {
+  let servers;
+  try { servers = await api("/api/servers"); } catch { return; }
+  state.servers = servers;
+  renderServerList();
+  if (state.currentId && silent) {
+    const s = servers.find((x) => x.id === state.currentId);
+    if (s && (s.running !== state.current?.running || s.state !== state.current?.state)) refreshServer();
+  }
+}
+
+function renderServerList() {
+  const q = $("server-search").value.trim().toLowerCase();
+  const list = $("server-list");
+  list.replaceChildren();
+  const items = state.servers.filter((s) => !q || s.name.toLowerCase().includes(q) || s.minecraft.includes(q));
+  if (!items.length) { list.append(el("p", { class: "muted small", text: t("webpanel.servers.none") })); return; }
+  items.sort((a, b) => (b.running - a.running) || a.name.localeCompare(b.name));
+  for (const s of items) {
+    const badge = el("span", { class: "badge", text: LOADER_GLYPH[s.loader] || "❓" });
+    badge.style.background = LOADER_COLOR[s.loader] || "#7d8798";
+    list.append(el("button", {
+      class: `server-item${s.id === state.currentId ? " active" : ""}`, type: "button",
       onclick: () => selectServer(s.id),
     }, [
-      el("div", { class: "name" }, [
-        el("span", { class: "dot " + (s.running ? "running" : "stopped") }),
-        document.createTextNode(s.name),
+      badge,
+      el("span", { class: "info" }, [
+        el("div", { class: "name", text: s.name }),
+        el("div", { class: "sub", text: `${s.loader} · MC ${s.minecraft} · ${t(`webpanel.state.${s.state}`)}` }),
       ]),
-      el("div", { class: "meta", text: `${s.loader} · MC ${s.minecraft}` }),
-    ]);
-    list.appendChild(row);
-  }
-  if (servers.length === 0) {
-    list.appendChild(el("div", { class: "meta", text: t("webpanel.servers.none") }));
+      el("span", { class: `status-dot${s.running ? " on" : ""}` }),
+    ]));
   }
 }
-
-// -- sunucu seçimi / durum ----------------------------------------------------
+$("server-search").addEventListener("input", renderServerList);
 
 async function selectServer(id) {
-  currentServerId = id;
-  await loadServers();
-  document.getElementById("empty-state").classList.add("hidden");
-  document.getElementById("server-view").classList.remove("hidden");
+  state.currentId = id;
+  state.selectedPlayer = null;
+  closeSidebar();
+  renderServerList();
+  $("empty-state").classList.add("hidden");
+  $("server-view").classList.remove("hidden");
   await refreshServer();
-  loadProperties();
-  switchTab("console");
+  resetConsole([]);
   connectConsole();
+  switchTab(state.activeTab);
 }
 
 async function refreshServer() {
-  const s = await api(`/api/servers/${currentServerId}`);
-  currentServer = s;
-  document.getElementById("server-name").textContent = s.name;
-  document.getElementById("server-meta").textContent =
-    `${s.loader}${s.loader_version ? " " + s.loader_version : ""} · MC ${s.minecraft}`;
-
-  const pill = document.getElementById("status-pill");
-  pill.textContent = s.running ? t("webpanel.status.running") : t("webpanel.status.stopped");
-  pill.className = "status-pill " + (s.running ? "running" : "stopped");
-
-  document.getElementById("btn-prepare").disabled = s.running;
-  document.getElementById("btn-install").classList.toggle("hidden", s.state !== "needs_install");
-  document.getElementById("btn-install").disabled = s.running;
-  document.getElementById("btn-start").disabled = s.running || s.state !== "ready";
-  document.getElementById("btn-stop").disabled = !s.running;
-  document.getElementById("command-input").disabled = !s.running;
-  document.getElementById("btn-send-command").disabled = !s.running;
-
-  renderSettingsForm(s);
-  renderPlayersRunningState(s.running);
-  renderModsBar(s);
+  if (!state.currentId) return;
+  const s = await api(`/api/servers/${state.currentId}`);
+  state.current = s;
+  $("server-name").textContent = s.name;
+  $("server-meta").textContent = `${s.loader}${s.loader_version ? " " + s.loader_version : ""} · Minecraft ${s.minecraft}`;
+  const pill = $("status-pill");
+  pill.replaceChildren(el("span", { class: "dot" }), s.running ? t("webpanel.status.running") : t("webpanel.status.stopped"));
+  pill.className = `chip ${s.running ? "success" : ""}`;
+  const st = $("state-pill");
+  st.textContent = t(`webpanel.state.${s.state}`);
+  st.className = `chip ${s.state === "ready" ? "accent" : s.state === "needs_install" ? "warning" : ""}`;
+  $("btn-prepare").disabled = s.running;
+  $("btn-install").classList.toggle("hidden", s.state !== "needs_install");
+  $("btn-install").disabled = s.running;
+  $("btn-start").disabled = s.running || s.state !== "ready";
+  $("btn-stop").disabled = !s.running;
+  $("command-input").disabled = !s.running;
+  $("btn-send-command").disabled = !s.running;
+  const mods = s.mods.map((m) => m.name).join(", ");
+  $("mods-bar").textContent = `${t("webpanel.mods_bar.title", { count: s.mods.length })}${mods ? " — " + mods : ""}` +
+    (s.mods_excluded_count ? `  ${t("webpanel.mods_bar.excluded", { count: s.mods_excluded_count })}` : "");
+  renderSettings(s);
+  if (!s.running) renderPlayers([]);
 }
 
-function renderModsBar(s) {
-  document.getElementById("mods-bar-title").textContent = t("webpanel.mods_bar.title", { count: s.mods.length });
-  const list = document.getElementById("mods-bar-list");
-  list.innerHTML = "";
-  for (const mod of s.mods) {
-    list.appendChild(el("span", { class: "mod-chip", text: mod.name, title: mod.file_name }));
-  }
-  const excludedEl = document.getElementById("mods-bar-excluded");
-  excludedEl.textContent = s.mods_excluded_count > 0
-    ? t("webpanel.mods_bar.excluded", { count: s.mods_excluded_count })
-    : "";
+// -- eylem düğmeleri ------------------------------------------------------------
+async function busy(button, fn) {
+  button.disabled = true;
+  try { await fn(); } catch { /* toast zaten gösterildi */ } finally { await refreshServer().catch(() => {}); loadServers(true); }
 }
-
-// -- aksiyon butonları --------------------------------------------------------
-
-document.getElementById("btn-prepare").addEventListener("click", async () => {
+$("btn-prepare").addEventListener("click", (e) => busy(e.currentTarget, async () => {
   toast(t("webpanel.toast.preparing"));
-  await api(`/api/servers/${currentServerId}/prepare`, { method: "POST" });
-  toast(t("webpanel.toast.prepared"));
-  await refreshServer();
-});
-
-document.getElementById("btn-install").addEventListener("click", async () => {
+  await api(`/api/servers/${state.currentId}/prepare`, { method: "POST" });
+  toast(t("webpanel.toast.prepared"), "success");
+}));
+$("btn-install").addEventListener("click", (e) => busy(e.currentTarget, async () => {
   toast(t("webpanel.toast.installing"));
-  await api(`/api/servers/${currentServerId}/install`, { method: "POST" });
-  toast(t("webpanel.toast.installed"));
-  await refreshServer();
-});
-
-document.getElementById("btn-start").addEventListener("click", async () => {
-  if (currentServer && !currentServer.eula_accepted) {
-    const ok = confirm(t("webpanel.eula.confirm"));
-    if (!ok) return;
-    await api(`/api/servers/${currentServerId}/settings`, {
+  const data = await api(`/api/servers/${state.currentId}/install`, { method: "POST" });
+  (data.output || []).forEach((l) => appendLine(l));
+  toast(t("webpanel.toast.installed"), "success");
+}));
+$("btn-start").addEventListener("click", (e) => busy(e.currentTarget, async () => {
+  const s = state.current;
+  if (!s.eula_accepted) {
+    if (!confirm(t("webpanel.eula.confirm"))) return;
+    await api(`/api/servers/${state.currentId}/settings`, {
       method: "PUT",
-      body: JSON.stringify({
-        memory_mb: currentServer.memory_mb,
-        selected_world: currentServer.selected_world,
-        eula_accepted: true,
-        use_optimized_flags: currentServer.use_optimized_flags,
-      }),
+      body: JSON.stringify({ memory_mb: s.memory_mb, selected_world: s.selected_world, eula_accepted: true, use_optimized_flags: s.use_optimized_flags }),
     });
   }
-  await api(`/api/servers/${currentServerId}/start`, { method: "POST" });
   toast(t("webpanel.toast.starting"));
-  await refreshServer();
+  await api(`/api/servers/${state.currentId}/start`, { method: "POST" });
+  resetConsole([]);
   connectConsole();
+}));
+$("btn-stop").addEventListener("click", (e) => {
+  if (!confirm(t("webpanel.confirm.stop"))) return;
+  busy(e.currentTarget, async () => {
+    toast(t("webpanel.toast.stopping"));
+    await api(`/api/servers/${state.currentId}/stop`, { method: "POST" });
+  });
 });
 
-document.getElementById("btn-stop").addEventListener("click", async () => {
-  toast(t("webpanel.toast.stopping"));
-  await api(`/api/servers/${currentServerId}/stop`, { method: "POST" });
-  await refreshServer();
-});
-
-// -- sekmeler ------------------------------------------------------------
-
-for (const btn of document.querySelectorAll(".tab-button")) {
-  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
-}
-
+// -- sekmeler ---------------------------------------------------------------------
 function switchTab(name) {
-  for (const btn of document.querySelectorAll(".tab-button")) {
-    btn.classList.toggle("active", btn.dataset.tab === name);
-  }
-  for (const pane of document.querySelectorAll(".tab-pane")) {
-    pane.classList.toggle("active", pane.id === "tab-" + name);
-  }
+  state.activeTab = name;
+  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === `pane-${name}`));
+  writeHash();
+  if (name === "players") refreshPlayers();
+  if (name === "properties") loadProperties();
+  if (name === "logs") pollLogs(true);
+  if (name === "diagnostics") loadDiagnostics();
 }
 
-// -- konsol ------------------------------------------------------------------
-
-function consoleLineClass(text) {
-  const m = /]\s*\[[^/\]]+\/(INFO|WARN|ERROR)\]/.exec(text);
-  if (!m) return "info";
-  return m[1].toLowerCase();
+// -- konsol -----------------------------------------------------------------------
+function lineLevel(text) {
+  const m = text.match(/(?:\/|\s)(INFO|WARN|WARNING|ERROR|FATAL|SEVERE)\]/);
+  if (m) return ["ERROR", "FATAL", "SEVERE"].includes(m[1]) ? 2 : (m[1].startsWith("WARN") ? 1 : 0);
+  if (/^(Exception|Caused by|\tat |java\.)/.test(text)) return 2;
+  return 0;
+}
+function lineClass(text) {
+  const lvl = lineLevel(text);
+  if (lvl === 2) return "error";
+  if (lvl === 1) return "warn";
+  if (/\]:?\s*<[^>]+>/.test(text)) return "chat";
+  if (/joined the game|left the game|lost connection/.test(text)) return "join";
+  if (text.startsWith("> ")) return "cmd";
+  return "";
 }
 
-function appendConsoleLine(text) {
-  const box = document.getElementById("console");
-  const line = el("div", { class: "line " + consoleLineClass(text), text });
-  box.appendChild(line);
-  if (document.getElementById("auto-scroll").checked) {
-    box.scrollTop = box.scrollHeight;
+function renderLine(text, cls) {
+  const node = el("div", { class: `line ${cls || lineClass(text)}` });
+  const q = $("console-find").value;
+  if (q && text.toLowerCase().includes(q.toLowerCase())) {
+    let rest = text;
+    const lower = q.toLowerCase();
+    while (rest) {
+      const i = rest.toLowerCase().indexOf(lower);
+      if (i < 0) { node.append(rest); break; }
+      node.append(rest.slice(0, i), el("mark", { text: rest.slice(i, i + q.length) }));
+      rest = rest.slice(i + q.length);
+    }
+  } else node.textContent = text;
+  return node;
+}
+
+function passes(text) {
+  const need = Number($("console-filter").value);
+  return need === 0 || lineLevel(text) >= need;
+}
+
+function appendLine(text, cls) {
+  state.consoleLines.push(text);
+  if (state.consoleLines.length > CONSOLE_MAX) state.consoleLines.splice(0, state.consoleLines.length - CONSOLE_MAX);
+  const view = $("console");
+  if (passes(text)) {
+    view.append(renderLine(text, cls));
+    while (view.childElementCount > CONSOLE_MAX) view.firstChild.remove();
+    if ($("auto-scroll").checked) view.scrollTop = view.scrollHeight;
   }
+  $("console-count").textContent = t("webpanel.console.lines", { count: state.consoleLines.length });
+}
+
+function resetConsole(lines) {
+  state.consoleLines = [];
+  $("console").replaceChildren();
+  lines.forEach((l) => appendLine(l));
+  $("console-count").textContent = t("webpanel.console.lines", { count: state.consoleLines.length });
+}
+
+function rerenderConsole() {
+  const view = $("console");
+  const frag = document.createDocumentFragment();
+  state.consoleLines.filter(passes).forEach((l) => frag.append(renderLine(l)));
+  view.replaceChildren(frag);
+  view.scrollTop = view.scrollHeight;
+}
+$("console-filter").addEventListener("change", rerenderConsole);
+let findTimer = null;
+$("console-find").addEventListener("input", () => { clearTimeout(findTimer); findTimer = setTimeout(rerenderConsole, 200); });
+$("btn-clear-console").addEventListener("click", () => resetConsole([]));
+$("btn-copy-console").addEventListener("click", async () => {
+  await navigator.clipboard?.writeText(state.consoleLines.join("\n"));
+  toast(t("webpanel.console.copied"), "success");
+});
+$("btn-download-console").addEventListener("click", () =>
+  download(`${state.current?.name || "server"}-console-${stamp()}.log`, state.consoleLines.join("\n") + "\n"));
+
+function closeSocket() {
+  if (state.socket) { state.socket.onclose = null; state.socket.close(); state.socket = null; }
 }
 
 function connectConsole() {
-  if (consoleSocket) { consoleSocket.close(); consoleSocket = null; }
-  document.getElementById("console").innerHTML = "";
+  closeSocket();
+  if (!state.currentId) return;
+  const id = state.currentId;
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  consoleSocket = new WebSocket(`${proto}://${location.host}/ws/servers/${currentServerId}/console`);
-  consoleSocket.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === "line") appendConsoleLine(msg.text);
-    else if (msg.type === "exited") { appendConsoleLine("[panel] " + t("webpanel.console.process_exited")); refreshServer(); }
-    else if (msg.type === "error") appendConsoleLine("[panel] " + msg.text);
+  const ws = new WebSocket(`${proto}://${location.host}/ws/servers/${id}/console`);
+  state.socket = ws;
+  let first = true;
+  ws.onopen = () => { state.socketRetry = 0; $("conn-status").textContent = `● ${t("webpanel.connection.live")}`; };
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (first) { resetConsole([]); first = false; }
+    if (msg.type === "line") appendLine(msg.text);
+    else if (msg.type === "exited") { appendLine(t("webpanel.console.process_exited"), "sys"); refreshServer(); loadServers(true); }
+    else if (msg.type === "error") $("conn-status").textContent = "";
+  };
+  ws.onclose = (ev) => {
+    if (state.socket !== ws) return;
+    state.socket = null;
+    if (ev.code === 4401) { showLogin(); return; }
+    if (state.current?.running) {
+      $("conn-status").textContent = t("webpanel.connection.lost");
+      const delay = Math.min(10000, 1000 * 2 ** state.socketRetry++);
+      setTimeout(() => { if (state.currentId === id) connectConsole(); }, delay);
+    } else $("conn-status").textContent = "";
   };
 }
 
-document.getElementById("btn-clear-console").addEventListener("click", () => {
-  document.getElementById("console").innerHTML = "";
-});
-
-document.getElementById("btn-send-command").addEventListener("click", sendCommand);
-const commandInput = document.getElementById("command-input");
-commandInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { sendCommand(); return; }
-  if (e.key === "ArrowUp") {
-    if (commandHistory.length && commandHistoryIndex > 0) {
-      commandHistoryIndex -= 1;
-      commandInput.value = commandHistory[commandHistoryIndex];
-    }
-    e.preventDefault();
-  } else if (e.key === "ArrowDown") {
-    if (commandHistoryIndex < commandHistory.length - 1) {
-      commandHistoryIndex += 1;
-      commandInput.value = commandHistory[commandHistoryIndex];
-    } else {
-      commandHistoryIndex = commandHistory.length;
-      commandInput.value = "";
-    }
-    e.preventDefault();
-  }
-});
-
-async function sendCommand() {
-  const text = commandInput.value.trim();
+async function sendCommand(text) {
+  if (!text || !state.currentId) return;
+  appendLine(`> ${text}`, "cmd");
+  await api(`/api/servers/${state.currentId}/command`, { method: "POST", body: JSON.stringify({ text }) }).catch(() => {});
+}
+$("command-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = $("command-input");
+  const text = input.value.trim().replace(/^\//, "");
   if (!text) return;
-  if (!commandHistory.length || commandHistory[commandHistory.length - 1] !== text) commandHistory.push(text);
-  commandHistoryIndex = commandHistory.length;
-  commandInput.value = "";
-  await api(`/api/servers/${currentServerId}/command`, { method: "POST", body: JSON.stringify({ text }) });
-}
+  if (state.history[state.history.length - 1] !== text) state.history.push(text);
+  state.historyIndex = state.history.length;
+  input.value = "";
+  sendCommand(text);
+});
+$("command-input").addEventListener("keydown", (e) => {
+  if (!state.history.length || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  e.preventDefault();
+  state.historyIndex = e.key === "ArrowUp" ? Math.max(0, state.historyIndex - 1) : Math.min(state.history.length, state.historyIndex + 1);
+  $("command-input").value = state.history[state.historyIndex] || "";
+});
 
-// -- oyuncular -----------------------------------------------------------
-
-function renderPlayersRunningState(running) {
-  document.getElementById("btn-refresh-players").disabled = !running;
-  if (!running) {
-    document.getElementById("players-list-items").innerHTML = "";
-    document.getElementById("players-empty").textContent = t("webpanel.players.running_required");
-    document.getElementById("players-detail-body").classList.add("hidden");
-    selectedPlayer = null;
-  }
-}
-
-document.getElementById("btn-refresh-players").addEventListener("click", refreshPlayers);
-
+// -- oyuncular --------------------------------------------------------------------
 async function refreshPlayers() {
-  const data = await api(`/api/servers/${currentServerId}/players`);
-  const list = document.getElementById("players-list-items");
-  list.innerHTML = "";
-  for (const name of data.players) {
-    const chip = el("div", {
-      class: "player-chip" + (name === selectedPlayer ? " active" : ""),
-      text: name,
-      onclick: () => selectPlayer(name),
-    });
-    list.appendChild(chip);
+  if (!state.current?.running) { renderPlayers([]); return; }
+  try { renderPlayers((await api(`/api/servers/${state.currentId}/players`)).players); } catch { /* toast */ }
+}
+setInterval(() => { if (state.activeTab === "players" && state.current?.running && !document.hidden) refreshPlayers(); }, 6000);
+
+function renderPlayers(players) {
+  const list = $("players-list");
+  list.replaceChildren();
+  if (!state.current?.running) list.append(el("p", { class: "muted small", text: t("webpanel.players.running_required") }));
+  else if (!players.length) list.append(el("p", { class: "muted small", text: t("webpanel.players.none_online") }));
+  for (const name of players) {
+    list.append(el("button", { class: `list-item${name === state.selectedPlayer ? " active" : ""}`, type: "button", text: name, onclick: () => selectPlayer(name, players) }));
   }
-  if (data.players.length === 0) {
-    list.appendChild(el("div", { class: "meta", text: t("webpanel.players.none_online") }));
-  }
+  if (state.selectedPlayer && !players.includes(state.selectedPlayer)) selectPlayer(null, players);
+}
+$("btn-refresh-players").addEventListener("click", refreshPlayers);
+
+function selectPlayer(name, players) {
+  state.selectedPlayer = name;
+  $("players-empty").classList.toggle("hidden", !!name);
+  $("players-detail-body").classList.toggle("hidden", !name);
+  $("player-name").textContent = name || "—";
+  document.querySelector("#inventory-table tbody").replaceChildren();
+  document.querySelector("#ender-table tbody").replaceChildren();
+  if (players) renderPlayersSelectionOnly();
+}
+function renderPlayersSelectionOnly() {
+  document.querySelectorAll("#players-list .list-item").forEach((b) => b.classList.toggle("active", b.textContent === state.selectedPlayer));
 }
 
-function selectPlayer(name) {
-  selectedPlayer = name;
-  document.getElementById("players-empty").classList.add("hidden");
-  document.getElementById("players-detail-body").classList.remove("hidden");
-  document.querySelectorAll(".player-chip").forEach((c) => c.classList.toggle("active", c.textContent === name));
-  document.querySelector("#inventory-table tbody").innerHTML = "";
-  document.querySelector("#ender-table tbody").innerHTML = "";
-}
+document.querySelectorAll("[data-action]").forEach((b) => b.addEventListener("click", async () => {
+  const p = state.selectedPlayer;
+  if (!p || !PLAYER_RE.test(p)) return;
+  const action = b.dataset.action;
+  if (action === "kill" && !confirm(t("webpanel.confirm.kill", { player: p }))) return;
+  let body;
+  if (action === "damage") body = JSON.stringify({ amount: Number($("p-damage-amount").value) || 4 });
+  if (action === "hunger") body = JSON.stringify({ duration_s: Number($("p-hunger-seconds").value) || 30 });
+  await api(`/api/servers/${state.currentId}/players/${encodeURIComponent(p)}/${action}`, { method: "POST", body }).catch(() => null);
+  toast(t("webpanel.toast.player_action_sent", { player: p, action: b.textContent }), "success");
+}));
+document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => {
+  const p = state.selectedPlayer;
+  if (p && PLAYER_RE.test(p)) sendCommand(b.dataset.cmd.replace("{p}", p));
+}));
 
-document.getElementById("p-heal").addEventListener("click", () => playerAction("heal"));
-document.getElementById("p-kill").addEventListener("click", () => playerAction("kill"));
-document.getElementById("p-feed").addEventListener("click", () => playerAction("feed"));
-document.getElementById("p-damage").addEventListener("click", () =>
-  playerAction("damage", { amount: Number(document.getElementById("p-damage-amount").value) || 4 })
-);
-document.getElementById("p-hunger").addEventListener("click", () =>
-  playerAction("hunger", { duration_s: Number(document.getElementById("p-hunger-seconds").value) || 30 })
-);
-
-const PLAYER_ACTION_LABEL_KEYS = {
-  heal: "webpanel.btn.heal",
-  kill: "webpanel.btn.kill",
-  feed: "webpanel.btn.feed",
-  damage: "webpanel.btn.damage",
-  hunger: "webpanel.btn.hunger",
-};
-
-async function playerAction(action, body) {
-  if (!selectedPlayer) return;
-  await api(`/api/servers/${currentServerId}/players/${encodeURIComponent(selectedPlayer)}/${action}`, {
-    method: "POST",
-    body: JSON.stringify(body || {}),
-  });
-  toast(t("webpanel.toast.player_action_sent", {
-    player: selectedPlayer,
-    action: t(PLAYER_ACTION_LABEL_KEYS[action] || action),
-  }));
-}
-
-function fillItemTable(tableId, items, withCategory) {
+function fillItems(tableId, items, withCategory) {
   const body = document.querySelector(`#${tableId} tbody`);
-  body.innerHTML = "";
-  for (const item of items) {
-    body.appendChild(el("tr", {}, [
-      el("td", { text: withCategory ? item.category : String(item.slot) }),
-      el("td", { text: item.item_id }),
-      el("td", { text: String(item.count) }),
-    ]));
-  }
-  if (items.length === 0) {
-    body.appendChild(el("tr", {}, [el("td", { text: "—", colspan: "3" })]));
-  }
+  body.replaceChildren(...items.map((i) => el("tr", {}, [
+    el("td", { text: withCategory ? i.category : String(i.slot) }),
+    el("td", { text: i.item_id.replace(/^minecraft:/, "") }),
+    el("td", { text: String(i.count) }),
+  ])));
 }
-
-document.getElementById("btn-view-inventory").addEventListener("click", async () => {
-  if (!selectedPlayer) return;
-  const data = await api(`/api/servers/${currentServerId}/players/${encodeURIComponent(selectedPlayer)}/inventory`);
-  fillItemTable("inventory-table", data.items, true);
+$("btn-view-inventory").addEventListener("click", async () => {
+  if (!state.selectedPlayer) return;
+  const data = await api(`/api/servers/${state.currentId}/players/${encodeURIComponent(state.selectedPlayer)}/inventory`).catch(() => null);
+  if (data) fillItems("inventory-table", data.items, true);
+});
+$("btn-view-ender").addEventListener("click", async () => {
+  if (!state.selectedPlayer) return;
+  const data = await api(`/api/servers/${state.currentId}/players/${encodeURIComponent(state.selectedPlayer)}/ender-chest`).catch(() => null);
+  if (data) fillItems("ender-table", data.items, false);
 });
 
-document.getElementById("btn-view-ender").addEventListener("click", async () => {
-  if (!selectedPlayer) return;
-  const data = await api(`/api/servers/${currentServerId}/players/${encodeURIComponent(selectedPlayer)}/ender-chest`);
-  fillItemTable("ender-table", data.items, false);
-});
-
-// -- ayarlar (bellek GB/MB + dünya + performans) ------------------------------
-
-function renderSettingsForm(s) {
-  const presetSelect = document.getElementById("mem-preset");
-  const customInput = document.getElementById("mem-custom");
-  presetSelect.innerHTML = "";
-
-  const maxSafe = s.max_safe_memory_mb;
-  const allowed = GB_PRESETS.filter((gb) => maxSafe == null || gb * 1024 <= maxSafe);
-  if (allowed.length === 0) allowed.push(GB_PRESETS[0]);
-  for (const gb of allowed) {
-    presetSelect.appendChild(el("option", { value: String(gb * 1024), text: `${gb} GB` }));
+// -- çalışma ayarları ---------------------------------------------------------------
+function renderSettings(s) {
+  const preset = $("mem-preset");
+  preset.replaceChildren();
+  for (const gb of GB_PRESETS) {
+    if (s.max_safe_memory_mb && gb * 1024 > s.max_safe_memory_mb) continue;
+    preset.append(el("option", { value: String(gb * 1024), text: `${gb} GB` }));
   }
-  presetSelect.appendChild(el("option", { value: "custom", text: t("webpanel.memory.custom") }));
-
-  const matching = allowed.find((gb) => gb * 1024 === s.memory_mb);
-  if (matching) {
-    presetSelect.value = String(matching * 1024);
-    customInput.classList.add("hidden");
-  } else {
-    presetSelect.value = "custom";
-    customInput.classList.remove("hidden");
-  }
-  customInput.value = s.memory_mb;
-  customInput.max = maxSafe || 131072;
-
-  document.getElementById("memory-info").textContent =
-    s.system_memory_mb == null
-      ? t("webpanel.memory.unknown")
-      : t("webpanel.memory.info", {
-          total_gb: (s.system_memory_mb / 1024).toFixed(1),
-          max_gb: (maxSafe / 1024).toFixed(1),
-        });
-
-  const worldSelect = document.getElementById("world-select");
-  worldSelect.innerHTML = "";
-  worldSelect.appendChild(el("option", { value: "", text: t("webpanel.world.none") }));
-  for (const w of s.worlds) worldSelect.appendChild(el("option", { value: w, text: w }));
-  worldSelect.value = s.selected_world || "";
-
-  document.getElementById("optimized-flags").checked = s.use_optimized_flags;
+  preset.append(el("option", { value: "custom", text: t("webpanel.memory.custom") }));
+  const match = [...preset.options].find((o) => o.value === String(s.memory_mb));
+  preset.value = match ? match.value : "custom";
+  $("mem-custom").value = s.memory_mb;
+  if (s.max_safe_memory_mb) $("mem-custom").max = s.max_safe_memory_mb;
+  $("mem-custom").classList.toggle("hidden", preset.value !== "custom");
+  $("memory-info").textContent = s.system_memory_mb
+    ? t("webpanel.memory.info", { total_gb: (s.system_memory_mb / 1024).toFixed(1), max_gb: (s.max_safe_memory_mb / 1024).toFixed(1) })
+    : t("webpanel.memory.unknown");
+  const world = $("world-select");
+  world.replaceChildren(el("option", { value: "", text: t("webpanel.world.none") }), ...s.worlds.map((w) => el("option", { value: w, text: w })));
+  world.value = s.selected_world || "";
+  $("optimized-flags").checked = s.use_optimized_flags;
 }
-
-document.getElementById("mem-preset").addEventListener("change", (e) => {
-  const customInput = document.getElementById("mem-custom");
-  if (e.target.value === "custom") {
-    customInput.classList.remove("hidden");
-  } else {
-    customInput.classList.add("hidden");
-    customInput.value = e.target.value;
-  }
+$("mem-preset").addEventListener("change", (e) => $("mem-custom").classList.toggle("hidden", e.target.value !== "custom"));
+$("btn-save-settings").addEventListener("click", async () => {
+  const preset = $("mem-preset").value;
+  const memory = preset === "custom" ? Number($("mem-custom").value) : Number(preset);
+  await api(`/api/servers/${state.currentId}/settings`, {
+    method: "PUT",
+    body: JSON.stringify({
+      memory_mb: memory, selected_world: $("world-select").value || null,
+      eula_accepted: state.current.eula_accepted, use_optimized_flags: $("optimized-flags").checked,
+    }),
+  }).catch(() => null);
+  toast(t("webpanel.toast.settings_saved"), "success");
+  refreshServer();
 });
 
-document.getElementById("btn-save-settings").addEventListener("click", async () => {
-  const presetValue = document.getElementById("mem-preset").value;
-  const memoryMb = presetValue === "custom"
-    ? Number(document.getElementById("mem-custom").value)
-    : Number(presetValue);
-  const body = {
-    memory_mb: memoryMb,
-    selected_world: document.getElementById("world-select").value || null,
-    eula_accepted: currentServer.eula_accepted,
-    use_optimized_flags: document.getElementById("optimized-flags").checked,
-  };
-  await api(`/api/servers/${currentServerId}/settings`, { method: "PUT", body: JSON.stringify(body) });
-  toast(t("webpanel.toast.settings_saved"));
-  await refreshServer();
-});
-
-// -- server.properties ---------------------------------------------------
-
+// -- server.properties ----------------------------------------------------------------
 async function loadProperties() {
-  const data = await api(`/api/servers/${currentServerId}/properties`);
-  const grid = document.getElementById("properties-grid");
-  grid.innerHTML = "";
-  grid.dataset.widgets = "";
-  const widgets = {};
-  for (const prop of data.known) {
-    const value = data.values[prop.key] ?? prop.default;
+  const data = await api(`/api/servers/${state.currentId}/properties`).catch(() => null);
+  if (!data) return;
+  const grid = $("properties-grid");
+  grid.replaceChildren();
+  for (const p of data.known) {
+    const value = data.values[p.key] ?? p.default;
     let input;
-    if (prop.type === "bool") {
-      input = el("input", { type: "checkbox" });
-      input.checked = value === "true";
-    } else if (prop.type === "choice") {
-      input = el("select", {}, prop.choices.map((c) => el("option", { value: c, text: c })));
-      input.value = value;
-    } else if (prop.type === "int") {
-      input = el("input", { type: "number" });
-      input.value = value;
-    } else {
-      input = el("input", { type: "text" });
-      input.value = value;
-    }
-    widgets[prop.key] = input;
-    grid.appendChild(el("label", { text: prop.label }));
-    grid.appendChild(input);
+    if (p.type === "bool") { input = el("input", { type: "checkbox" }); input.checked = value === "true"; }
+    else if (p.type === "choice") { input = el("select", {}, p.choices.map((c) => el("option", { value: c, text: c }))); input.value = value; }
+    else if (p.type === "int") input = el("input", { type: "number", value });
+    else input = el("input", { type: "text", value });
+    input.dataset.key = p.key;
+    input.dataset.type = p.type;
+    grid.append(el("label", {}, [p.label, el("span", { class: "key", text: p.key })]), input);
   }
-  loadProperties._widgets = widgets;
 }
-
-document.getElementById("btn-save-properties").addEventListener("click", async () => {
-  const widgets = loadProperties._widgets || {};
+$("btn-save-properties").addEventListener("click", async () => {
   const values = {};
-  for (const [key, input] of Object.entries(widgets)) {
-    values[key] = input.type === "checkbox" ? String(input.checked) : String(input.value);
-  }
-  await api(`/api/servers/${currentServerId}/properties`, { method: "PUT", body: JSON.stringify({ values }) });
-  toast(t("webpanel.toast.properties_saved"));
+  document.querySelectorAll("#properties-grid [data-key]").forEach((n) => {
+    values[n.dataset.key] = n.dataset.type === "bool" ? (n.checked ? "true" : "false") : n.value;
+  });
+  await api(`/api/servers/${state.currentId}/properties`, { method: "PUT", body: JSON.stringify({ values }) }).catch(() => null);
+  toast(t("webpanel.toast.properties_saved"), "success");
 });
 
-// -- başlat ----------------------------------------------------------------
+// -- uygulama logları ------------------------------------------------------------------
+async function pollLogs(reset) {
+  if (state.activeTab !== "logs" || state.logPaused) return;
+  if (reset) { state.logAfter = 0; state.logEntries = []; }
+  const level = $("log-level").value;
+  const data = await api(`/api/debug/logs?after=${state.logAfter}&level=${level}&limit=1000`).catch(() => null);
+  if (!data) return;
+  if (data.entries.length) {
+    state.logAfter = data.entries[data.entries.length - 1].seq;
+    state.logEntries.push(...data.entries);
+    if (state.logEntries.length > 3000) state.logEntries.splice(0, state.logEntries.length - 3000);
+  }
+  renderLogs(reset || data.entries.length > 0);
+}
+function renderLogs(changed) {
+  if (!changed) return;
+  const q = $("log-search").value.trim().toLowerCase();
+  const view = $("log-view");
+  const atBottom = view.scrollTop + view.clientHeight >= view.scrollHeight - 20;
+  const rows = state.logEntries.filter((e) => !q || e.message.toLowerCase().includes(q) || (e.exc_text || "").toLowerCase().includes(q));
+  if (!rows.length) { view.replaceChildren(el("div", { class: "line sys", text: t("webpanel.logs.empty") })); return; }
+  view.replaceChildren(...rows.map((e) => el("div", { class: `line ${e.level}` }, [
+    `${e.time} `, el("span", { class: "lvl", text: e.level }), el("span", { class: "lg", text: `${e.logger.replace(/^mcpack\./, "")}: ` }),
+    e.message + (e.exc_text ? "\n" + e.exc_text : ""),
+  ])));
+  if (atBottom || changed === true) view.scrollTop = view.scrollHeight;
+}
+setInterval(() => { if (!document.hidden) pollLogs(false); }, 2500);
+$("log-level").addEventListener("change", () => pollLogs(true));
+$("log-search").addEventListener("input", () => renderLogs(true));
+$("btn-log-pause").addEventListener("click", (e) => {
+  state.logPaused = !state.logPaused;
+  e.currentTarget.textContent = state.logPaused ? t("webpanel.logs.resume") : t("webpanel.logs.pause");
+  if (!state.logPaused) pollLogs(false);
+});
+$("btn-log-download").addEventListener("click", () => download(`mcpack-log-${stamp()}.log`,
+  state.logEntries.map((e) => `${e.time} ${e.level} ${e.logger}: ${e.message}${e.exc_text ? "\n" + e.exc_text : ""}`).join("\n") + "\n"));
 
-(async () => {
-  await loadStrings();
-  await checkAuthAndStart();
-})();
+// -- teşhis -------------------------------------------------------------------------------
+async function loadDiagnostics() {
+  const [sys, net, exc] = await Promise.all([
+    api("/api/debug/system").catch(() => null),
+    api("/api/debug/network").catch(() => null),
+    api("/api/debug/exceptions").catch(() => null),
+  ]);
+  if (sys) {
+    document.querySelector("#sys-table tbody").replaceChildren(...Object.entries(sys.info).map(([k, v]) =>
+      el("tr", {}, [el("td", { text: k }), el("td", { text: v })])));
+  }
+  if (net) {
+    const s = net.stats;
+    $("net-stats").textContent = t("webpanel.diag.stats", { total: s.total, failed: s.failed, avg: s.avg_ms ? s.avg_ms.toFixed(0) : "—" });
+    document.querySelector("#net-table tbody").replaceChildren(...net.events.slice().reverse().slice(0, 200).map((e) => {
+      const bad = e.error || (e.status || 0) >= 400;
+      let path = e.url;
+      try { const u = new URL(e.url); path = u.pathname + u.search; } catch { /* yoksay */ }
+      return el("tr", {}, [
+        el("td", { text: new Date(e.created * 1000).toLocaleTimeString() }), el("td", { text: e.method }),
+        el("td", { class: bad ? "bad" : "ok", text: e.status != null ? String(e.status) : (e.error || "—") }),
+        el("td", { text: e.elapsed_ms != null ? e.elapsed_ms.toFixed(0) : "—" }), el("td", { text: e.host }), el("td", { text: path }),
+      ]);
+    }));
+  }
+  if (exc) {
+    const list = $("exc-list");
+    list.replaceChildren();
+    if (!exc.exceptions.length) list.append(el("p", { class: "muted small", text: t("webpanel.diag.none") }));
+    for (const e of exc.exceptions.slice(0, 30)) {
+      const details = el("details", { class: "exc" }, [
+        el("summary", { text: `${e.type}: ${e.message}${e.count > 1 ? `  ×${e.count}` : ""}` }),
+        el("div", { class: "muted small", text: e.origin }),
+        el("pre", { text: e.traceback }),
+      ]);
+      list.append(details);
+    }
+  }
+}
+$("btn-diag-refresh").addEventListener("click", loadDiagnostics);
+
+// -- mobil menü ---------------------------------------------------------------------------
+function closeSidebar() { $("sidebar").classList.remove("open"); $("scrim").classList.add("hidden"); }
+$("btn-menu").addEventListener("click", () => { $("sidebar").classList.add("open"); $("scrim").classList.remove("hidden"); });
+$("scrim").addEventListener("click", closeSidebar);
+
+boot().catch((err) => toast(String(err), "error"));

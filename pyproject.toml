@@ -30,7 +30,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-mcpack = ["assets/*.png", "webpanel/static/*"]
+mcpack = ["assets/*.png", "assets/*.svg", "webpanel/static/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

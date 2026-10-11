@@ -24,6 +24,9 @@ from mcpack.sources.base import (
     VersionDependency,
     VersionFile,
 )
+from mcpack.logging_setup import NETWORK, get_logger
+
+log = get_logger(__name__)
 
 BASE_URL = "https://api.curseforge.com"
 MINECRAFT_GAME_ID = 432
@@ -97,6 +100,8 @@ class CurseForgeClient(ModSource):
                 raise SourceAPIError(f"CurseForge'ta bulunamadı: {path}") from exc
             raise SourceAPIError(f"CurseForge API hatası ({status}): {path}") from exc
         except httpx.RequestError as exc:
+            NETWORK.record("GET", f"{BASE_URL}{path}", None, None, error=f"{type(exc).__name__}: {exc}")
+            log.warning("CurseForge ağ hatası %s: %s", path, exc)
             raise SourceAPIError(f"CurseForge API'sine ulaşılamadı (ağ hatası): {exc}") from exc
         return response
 

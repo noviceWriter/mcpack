@@ -57,9 +57,13 @@ class ModrinthClient(ModSource):
         if self._owns_client:
             await self._client.aclose()
 
-    async def _get(self, path: str, params: dict | None = None) -> httpx.Response:
+    async def _get(self, path: str, params: dict | None = None, *, json_body: object = None) -> httpx.Response:
+        method = "POST" if json_body is not None else "GET"
         try:
-            response = await self._client.get(f"{BASE_URL}{path}", params=params)
+            if json_body is not None:
+                response = await self._client.post(f"{BASE_URL}{path}", json=json_body)
+            else:
+                response = await self._client.get(f"{BASE_URL}{path}", params=params)
             await self._rate_limiter.observe(response)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -70,7 +74,7 @@ class ModrinthClient(ModSource):
                 raise SourceAPIError("Modrinth rate limit'ine takıldı, birazdan tekrar deneyin.") from exc
             raise SourceAPIError(f"Modrinth API hatası ({status}): {path}") from exc
         except httpx.RequestError as exc:
-            NETWORK.record("GET", f"{BASE_URL}{path}", None, None, error=f"{type(exc).__name__}: {exc}")
+            NETWORK.record(method, f"{BASE_URL}{path}", None, None, error=f"{type(exc).__name__}: {exc}")
             log.warning("Modrinth ağ hatası %s: %s", path, exc)
             raise SourceAPIError(f"Modrinth API'sine ulaşılamadı (ağ hatası): {exc}") from exc
         return response
@@ -152,39 +156,56 @@ class ModrinthClient(ModSource):
         response = await self._get(f"/project/{project_id}/version", params=params)
         data = response.json()
 
-        versions = []
-        for v in data:
-            files = [
-                VersionFile(
-                    file_name=f["filename"],
-                    url=f["url"],
-                    sha1=f.get("hashes", {}).get("sha1"),
-                    sha512=f.get("hashes", {}).get("sha512"),
-                    size=f.get("size"),
-                    primary=f.get("primary", False),
-                )
-                for f in v.get("files", [])
-            ]
-            deps = [
-                VersionDependency(
-                    project_id=d.get("project_id"),
-                    version_id=d.get("version_id"),
-                    dependency_type=_DEPENDENCY_TYPE_MAP.get(
-                        d.get("dependency_type", "required"), "required"
-                    ),
-                )
-                for d in v.get("dependencies", [])
-            ]
-            versions.append(
-                ModVersion(
-                    source=self.name,
-                    version_id=v["id"],
-                    project_id=v["project_id"],
-                    name=v.get("name", v.get("version_number", "")),
-                    game_versions=v.get("game_versions", []),
-                    loaders=v.get("loaders", []),
-                    dependencies=deps,
-                    files=files,
-                )
+        return [self._parse_version(v) for v in data]
+
+    def _parse_version(self, v: dict) -> ModVersion:
+        files = [
+            VersionFile(
+                file_name=f["filename"],
+                url=f["url"],
+                sha1=f.get("hashes", {}).get("sha1"),
+                sha512=f.get("hashes", {}).get("sha512"),
+                size=f.get("size"),
+                primary=f.get("primary", False),
             )
-        return versions
+            for f in v.get("files", [])
+        ]
+        deps = [
+            VersionDependency(
+                project_id=d.get("project_id"),
+                version_id=d.get("version_id"),
+                dependency_type=_DEPENDENCY_TYPE_MAP.get(d.get("dependency_type", "required"), "required"),
+            )
+            for d in v.get("dependencies", [])
+        ]
+        return ModVersion(
+            source=self.name,
+            version_id=v["id"],
+            project_id=v["project_id"],
+            name=v.get("name", v.get("version_number", "")),
+            game_versions=v.get("game_versions", []),
+            loaders=v.get("loaders", []),
+            dependencies=deps,
+            files=files,
+        )
+
+    async def latest_versions_for_hashes(
+        self,
+        sha1_hashes: list[str],
+        *,
+        game_version: str | None = None,
+        loader: Loader | None = None,
+    ) -> dict[str, ModVersion]:
+        """Modrinth'in toplu güncelleme uç noktası (POST /version_files/update):
+        her dosya hash'i için, verilen MC sürümü/loader ile uyumlu EN YENİ
+        sürümü TEK istekte döner — mod başına ayrı istek gerekmez. Modrinth'in
+        tanımadığı hash'ler sonuçta yer almaz."""
+        if not sha1_hashes:
+            return {}
+        body: dict[str, object] = {"hashes": sha1_hashes, "algorithm": "sha1"}
+        if loader and loader != Loader.VANILLA:
+            body["loaders"] = [loader.value]
+        if game_version:
+            body["game_versions"] = [game_version]
+        response = await self._get("/version_files/update", json_body=body)
+        return {h.lower(): self._parse_version(v) for h, v in response.json().items()}

@@ -317,6 +317,36 @@ class PackManager:
         log.info("Mod eklendi: %s [%s] -> %s", entry.name or entry.file_name, entry.source.value, pack.name)
         return entry
 
+    def update_mod(self, pack: Pack, version: ModVersion) -> ModEntry:
+        """Bir modu yeni sürüme yükseltir. add_mod'dan farkı: kullanıcının
+        elle düzelttiği istemci/sunucu ortamı ve görünen ad/slug KORUNUR
+        (add_mod bunları kaynaktan yeniden türetirdi); zorunlu bağımlılık
+        listesi yeni sürümden alınır."""
+        existing = pack.find_mod(version.project_id)
+        if existing is None:
+            raise ValueError(f"Pack'te bulunamadı: {version.project_id}")
+        fresh = _version_to_entry(version, None)
+        fresh.env = existing.env
+        fresh.name = existing.name
+        fresh.slug = existing.slug
+        index = pack.mods.index(existing)
+        pack.mods[index] = fresh
+        self.save(pack)
+        log.info("Mod güncellendi: %s %s -> %s", fresh.name or fresh.file_name, existing.file_name, fresh.file_name)
+        return fresh
+
+    def update_content_download(self, pack: Pack, kind: ContentKind, version: ModVersion) -> ContentDownload:
+        existing = pack.find_content_download(kind, version.project_id)
+        if existing is None:
+            raise ValueError(f"Pack'te bulunamadı: {version.project_id}")
+        fresh = ContentDownload(kind=kind, **_downloadable_fields(version, None))
+        fresh.name = existing.name
+        fresh.slug = existing.slug
+        pack.content_downloads[pack.content_downloads.index(existing)] = fresh
+        self.save(pack)
+        log.info("İçerik güncellendi: %s -> %s", existing.file_name, fresh.file_name)
+        return fresh
+
     def remove_mod(self, pack: Pack, project_id: str) -> None:
         pack.mods = [m for m in pack.mods if m.project_id != project_id]
         self.save(pack)

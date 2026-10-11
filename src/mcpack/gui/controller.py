@@ -23,7 +23,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
 
 from mcpack.config import Settings
 from mcpack.downloader import make_client
@@ -95,6 +95,8 @@ class AppController(QObject):
     """(level, message) — level: info/success/warning/error. Ana pencere toast gösterir."""
     status = Signal(str)
     web_panel_changed = Signal(bool, str)
+    backups_changed = Signal(str)
+    """pack_id — yedek listesi değişti."""
     settings_changed = Signal()
     navigate = Signal(str, str)
     """(sayfa, pack_id) — komut paleti vb. yerlerden gezinme isteği."""
@@ -111,6 +113,7 @@ class AppController(QObject):
         self.server_started_at: dict[str, float] = {}
         self._web_panel = None
         self._polling: set[str] = set()
+        self._backup_timers: dict[str, QTimer] = {}
         self._pack_cache: dict[str, Pack] = {}
         """Kimlik haritası: her pack id için TEK bir canlı Pack nesnesi.
         Arka plan görevi (ör. mod ekleme) eski bir kopyayı kaydedip
@@ -668,9 +671,22 @@ class AppController(QObject):
     def update_server_config(self, pack: Pack, **kwargs) -> None:
         self.manager.update_server_config(pack, **kwargs)
         self.pack_updated.emit(pack.id)
+        self._sync_auto_backup(pack.id)
 
     def prepare_server(self, pack: Pack) -> None:
+        root = self.manager.server_root(pack)
+
         async def task(ctx: TaskContext) -> None:
+            import asyncio
+
+            from mcpack.backups import create_backup, has_world, prune
+
+            if pack.server.selected_world and has_world(root):
+                # prepare_server seçili dünyayı yazmadan önce sunucunun mevcut
+                # world/ klasörünü SİLER — oyuncuların ilerlemesi kaybolmasın.
+                ctx.message(t("ctl.backup_before_prepare"))
+                await asyncio.to_thread(create_backup, root, self.manager.backups_root(pack), label="before-prepare")
+                prune(self.manager.backups_root(pack), pack.server.backup_keep)
             async with make_client() as client:
                 await prepare_server(
                     pack, server_root=self.manager.server_root(pack), cache_dir=self.cache_dir(pack),
@@ -681,8 +697,89 @@ class AppController(QObject):
         self._run(
             t("ctl.task.prepare_server", name=pack.name), task,
             on_success=lambda _r: self.notify.emit("success", t("ctl.server_prepared")),
-            on_finally=lambda: self.server_changed.emit(pack.id), cancellable=True, category="server",
+            on_finally=lambda: (self.server_changed.emit(pack.id), self.backups_changed.emit(pack.id)),
+            cancellable=True, category="server",
         )
+
+    # ------------------------------------------------------------------ yedekler
+
+    def backup_server(self, pack: Pack, *, label: str = "manual", automatic: bool = False) -> None:
+        from mcpack.backups import create_backup, has_world, prune
+
+        root = self.manager.server_root(pack)
+        if not has_world(root):
+            if not automatic:
+                self._error(t("ctl.backup_no_world"))
+            return
+        process = self._running(pack.id)
+        directory = self.manager.backups_root(pack)
+
+        async def task(ctx: TaskContext):
+            import asyncio
+
+            info = await asyncio.to_thread(create_backup, root, directory, label=label, process=process)
+            prune(directory, pack.server.backup_keep)
+            return info
+
+        def success(info) -> None:
+            self.backups_changed.emit(pack.id)
+            if not automatic:
+                self.notify.emit("success", t("ctl.backup_done", name=info.name, size=f"{info.size / 1024**2:.1f}"))
+
+        self._run(
+            t("ctl.task.backup", name=pack.name), task, on_success=success, silent=automatic,
+            notify_error=True, category="backup",
+        )
+
+    def restore_backup(self, pack: Pack, backup: Path) -> None:
+        from mcpack.backups import restore_backup
+
+        if self.registry.is_running(pack.id):
+            self._error(t("ctl.restore_running"))
+            return
+        root = self.manager.server_root(pack)
+
+        async def task(ctx: TaskContext):
+            import asyncio
+
+            return await asyncio.to_thread(restore_backup, backup, root)
+
+        def success(moved) -> None:
+            self.notify.emit("success", t("ctl.restore_done", name=backup.name, aside=", ".join(m.name for m in moved) or "—"))
+            self.server_changed.emit(pack.id)
+
+        self._run(t("ctl.task.restore", name=backup.name), task, on_success=success, category="backup")
+
+    def delete_backup(self, pack: Pack, backup: Path) -> None:
+        backup.unlink(missing_ok=True)
+        log.info("Yedek silindi: %s", backup)
+        self.backups_changed.emit(pack.id)
+
+    def _sync_auto_backup(self, pack_id: str) -> None:
+        """Sunucu çalışıyorsa ve aralık > 0 ise zamanlayıcıyı kurar/günceller,
+        aksi halde durdurur."""
+        pack = self._pack_cache.get(pack_id)
+        minutes = pack.server.auto_backup_minutes if pack else 0
+        running = self.registry.is_running(pack_id)
+        timer = self._backup_timers.get(pack_id)
+        if not running or minutes <= 0:
+            if timer is not None:
+                timer.stop()
+                self._backup_timers.pop(pack_id, None)
+            return
+        if timer is None:
+            timer = QTimer(self)
+            timer.timeout.connect(lambda pid=pack_id: self._auto_backup(pid))
+            self._backup_timers[pack_id] = timer
+        interval = minutes * 60 * 1000
+        if timer.interval() != interval or not timer.isActive():
+            timer.start(interval)
+            log.info("Otomatik yedek: %s her %d dakikada", pack_id, minutes)
+
+    def _auto_backup(self, pack_id: str) -> None:
+        pack = self._pack_cache.get(pack_id)
+        if pack is not None and self.registry.is_running(pack_id):
+            self.backup_server(pack, label="auto", automatic=True)
 
     def install_server(self, pack: Pack) -> None:
         root = self.manager.server_root(pack)
@@ -749,6 +846,7 @@ class AppController(QObject):
             self._error(str(exc))
             return
         self.server_started_at[pack_id] = time.time()
+        self._sync_auto_backup(pack_id)
         self.console_reset.emit(pack_id, [])
         self.server_changed.emit(pack_id)
         self.notify.emit("info", t("ctl.server_starting", name=pack.name))
@@ -800,6 +898,7 @@ class AppController(QObject):
     def _on_exit_from_thread(self, pack_id: str, code: int) -> None:
         self.registry.pop(pack_id)
         self.server_started_at.pop(pack_id, None)
+        self._sync_auto_backup(pack_id)
         self.server_changed.emit(pack_id)
         pack = self.load_pack(pack_id)
         name = pack.name if pack else pack_id

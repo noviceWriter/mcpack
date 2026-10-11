@@ -276,3 +276,17 @@ def test_console_websocket_streams_buffered_and_live_lines(manager: PackManager,
                     break
     finally:
         process.stop(timeout=5)
+
+
+def test_backups_endpoints(tmp_path):
+    manager = PackManager(tmp_path)
+    pack = manager.create_pack(name="B", minecraft="1.20.1", loader=Loader.VANILLA, loader_version="")
+    client = TestClient(create_app(manager=manager, registry=ServerProcessRegistry(), settings=Settings()))
+    assert client.get(f"/api/servers/{pack.id}/backups").json() == {"backups": []}
+    assert client.post(f"/api/servers/{pack.id}/backups").status_code == 400  # henüz dünya yok
+    world = manager.server_root(pack) / "world"
+    world.mkdir(parents=True)
+    (world / "level.dat").write_bytes(b"x")
+    r = client.post(f"/api/servers/{pack.id}/backups")
+    assert r.status_code == 200 and r.json()["name"].startswith("backup-")
+    assert len(client.get(f"/api/servers/{pack.id}/backups").json()["backups"]) == 1

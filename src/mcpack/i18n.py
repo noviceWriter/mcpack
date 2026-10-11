@@ -305,6 +305,11 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "webpanel.diag.refresh": {"tr": "Yenile", "en": "Refresh"},
     "webpanel.menu": {"tr": "Menü", "en": "Menu"},
+    "webpanel.backups.title": {"tr": "Dünya yedekleri", "en": "World backups"},
+    "webpanel.backups.now": {"tr": "Şimdi Yedekle", "en": "Back Up Now"},
+    "webpanel.backups.none": {"tr": "Henüz yedek yok.", "en": "No backups yet."},
+    "webpanel.backups.running": {"tr": "Yedekleniyor…", "en": "Backing up…"},
+    "webpanel.backups.done": {"tr": "Yedek alındı: {name}", "en": "Backup created: {name}"},
 }
 
 def t(key: str, **kwargs: object) -> str:

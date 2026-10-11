@@ -735,6 +735,144 @@ class PropertiesView(QWidget):
         self.panel.ctl.save_server_properties(pack, values)
 
 
+class BackupsView(QWidget):
+    INTERVALS = [0, 15, 30, 60, 120, 240]
+
+    def __init__(self, panel: "ServerPanel") -> None:
+        super().__init__()
+        self.panel = panel
+        self._loading = False
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(10)
+
+        bar = QHBoxLayout()
+        bar.setSpacing(8)
+        self.backup_btn = button(t("backups.now"), variant="primary", on_click=self._backup)
+        self.restore_btn = button(t("backups.restore"), on_click=self._restore)
+        self.delete_btn = button(t("backups.delete"), variant="danger", on_click=self._delete)
+        for b in (self.backup_btn, self.restore_btn, self.delete_btn):
+            bar.addWidget(b)
+        bar.addWidget(button(t("backups.open_folder"), variant="ghost", on_click=self._open_folder))
+        bar.addStretch()
+        self.summary = label("", role="dim")
+        bar.addWidget(self.summary)
+        outer.addLayout(bar)
+
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels([t("backups.col.date"), t("backups.col.kind"), t("backups.col.size")])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(1, 180)
+        self.table.setColumnWidth(2, 110)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.itemSelectionChanged.connect(self._update_buttons)
+        outer.addWidget(self.table, 1)
+        self.empty = label(t("backups.empty"), role="muted", wrap=True)
+        outer.addWidget(self.empty)
+
+        card = Card(padding=14)
+        card.body.addWidget(label(t("backups.auto_title"), role="h3"))
+        form = QFormLayout()
+        self.interval = QComboBox()
+        for m in self.INTERVALS:
+            self.interval.addItem(t("backups.interval_off") if m == 0 else t("backups.interval_minutes", n=m), m)
+        self.interval.currentIndexChanged.connect(lambda _i: self._save())
+        form.addRow(t("backups.interval"), self.interval)
+        self.keep = QSpinBox()
+        self.keep.setRange(0, 200)
+        self.keep.setSpecialValueText(t("backups.keep_unlimited"))
+        self.keep.editingFinished.connect(self._save)
+        form.addRow(t("backups.keep"), self.keep)
+        card.body.addLayout(form)
+        card.body.addWidget(label(t("backups.note"), role="dim", wrap=True))
+        outer.addWidget(card)
+
+        panel.ctl.backups_changed.connect(lambda pid: panel.pack is not None and pid == panel.pack.id and self.refresh())
+
+    def show_pack(self, pack: Pack) -> None:
+        self._loading = True
+        try:
+            idx = self.interval.findData(pack.server.auto_backup_minutes)
+            if idx < 0:
+                self.interval.addItem(t("backups.interval_minutes", n=pack.server.auto_backup_minutes), pack.server.auto_backup_minutes)
+                idx = self.interval.count() - 1
+            self.interval.setCurrentIndex(idx)
+            self.keep.setValue(pack.server.backup_keep)
+        finally:
+            self._loading = False
+        self.refresh()
+
+    def _directory(self) -> Path | None:
+        pack = self.panel.pack
+        return self.panel.ctl.manager.backups_root(pack) if pack else None
+
+    def refresh(self) -> None:
+        from mcpack.backups import list_backups
+        from mcpack.gui.formatting import format_size
+
+        directory = self._directory()
+        items = list_backups(directory) if directory else []
+        self._items = items
+        self.table.setRowCount(len(items))
+        kinds = {"manual": t("backups.kind.manual"), "auto": t("backups.kind.auto"), "before-prepare": t("backups.kind.before_prepare")}
+        for r, b in enumerate(items):
+            date = QTableWidgetItem(b.created.strftime("%Y-%m-%d  %H:%M:%S"))
+            date.setToolTip(str(b.path))
+            self.table.setItem(r, 0, date)
+            self.table.setItem(r, 1, QTableWidgetItem(kinds.get(b.label, b.label or "—")))
+            self.table.setItem(r, 2, QTableWidgetItem(format_size(b.size)))
+        total = sum(b.size for b in items)
+        self.summary.setText(t("backups.summary", count=len(items), size=format_size(total)) if items else "")
+        self.table.setVisible(bool(items))
+        self.empty.setVisible(not items)
+        self._update_buttons()
+
+    def _selected(self):
+        row = self.table.currentRow()
+        return self._items[row] if 0 <= row < len(getattr(self, "_items", [])) else None
+
+    def _update_buttons(self) -> None:
+        sel = self._selected() is not None
+        self.restore_btn.setEnabled(sel and not self.panel.running)
+        self.restore_btn.setToolTip(t("ctl.restore_running") if self.panel.running else "")
+        self.delete_btn.setEnabled(sel)
+
+    def _backup(self) -> None:
+        if self.panel.pack is not None:
+            self.panel.ctl.backup_server(self.panel.pack)
+
+    def _restore(self) -> None:
+        b = self._selected()
+        if b is None or self.panel.pack is None:
+            return
+        if confirm(self, t("backups.restore_title"), t("backups.restore_confirm", name=b.name), ok_text=t("backups.restore"), danger=True):
+            self.panel.ctl.restore_backup(self.panel.pack, b.path)
+
+    def _delete(self) -> None:
+        b = self._selected()
+        if b is None or self.panel.pack is None:
+            return
+        if confirm(self, t("backups.delete_title"), t("backups.delete_confirm", name=b.name), ok_text=t("backups.delete"), danger=True):
+            self.panel.ctl.delete_backup(self.panel.pack, b.path)
+
+    def _open_folder(self) -> None:
+        directory = self._directory()
+        if directory is not None:
+            pack_actions.open_folder(directory)
+
+    def _save(self) -> None:
+        pack = self.panel.pack
+        if self._loading or pack is None:
+            return
+        self.panel.ctl.update_server_config(
+            pack, auto_backup_minutes=int(self.interval.currentData() or 0), backup_keep=self.keep.value()
+        )
+
+
 class ServerPanel(QWidget):
     def __init__(self, ctl: AppController) -> None:
         super().__init__()
@@ -795,6 +933,8 @@ class ServerPanel(QWidget):
         self.tabs.addTab(self.runtime, t("server.tab_settings"))
         self.tabs.addTab(self.properties, "server.properties")
         self.tabs.addTab(mods_holder, t("server.tab_mods"))
+        self.backups = BackupsView(self)
+        self.tabs.addTab(self.backups, t("server.tab_backups"))
         self.tabs.currentChanged.connect(self._on_tab)
         outer.addWidget(self.tabs, 1)
 
@@ -820,6 +960,7 @@ class ServerPanel(QWidget):
         if pack is None:
             return
         self.runtime.show_pack(pack)
+        self.backups.show_pack(pack)
         self._refresh_mods()
         if switched:
             info = self.ctl.server_info(pack)
@@ -865,6 +1006,7 @@ class ServerPanel(QWidget):
         if not self.running:
             self.players.clear()
         self.players._update_enabled()
+        self.backups.refresh()
         self._tick()
 
     def _tick(self) -> None:

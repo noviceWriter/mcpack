@@ -270,6 +270,7 @@ function switchTab(name) {
   writeHash();
   if (name === "players") refreshPlayers();
   if (name === "properties") loadProperties();
+  if (name === "settings") loadBackups();
   if (name === "logs") pollLogs(true);
   if (name === "diagnostics") loadDiagnostics();
 }
@@ -506,6 +507,25 @@ $("btn-save-settings").addEventListener("click", async () => {
   toast(t("webpanel.toast.settings_saved"), "success");
   refreshServer();
 });
+
+// -- dünya yedekleri ----------------------------------------------------------------
+async function loadBackups() {
+  const data = await api(`/api/servers/${state.currentId}/backups`).catch(() => null);
+  if (!data) return;
+  const body = document.querySelector("#backups-table tbody");
+  if (!data.backups.length) { body.replaceChildren(el("tr", {}, [el("td", { class: "muted small", text: t("webpanel.backups.none") })])); return; }
+  body.replaceChildren(...data.backups.slice(0, 20).map((b) => el("tr", {}, [
+    el("td", { text: b.created.replace("T", " ") }),
+    el("td", { class: "muted", text: b.label || "—" }),
+    el("td", { text: `${(b.size / 1048576).toFixed(1)} MB` }),
+  ])));
+}
+$("btn-backup-now").addEventListener("click", (e) => busy(e.currentTarget, async () => {
+  toast(t("webpanel.backups.running"));
+  const r = await api(`/api/servers/${state.currentId}/backups`, { method: "POST" });
+  toast(t("webpanel.backups.done", { name: r.name }), "success");
+  loadBackups();
+}));
 
 // -- server.properties ----------------------------------------------------------------
 async function loadProperties() {

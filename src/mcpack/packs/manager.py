@@ -150,6 +150,10 @@ class PackManager:
         # — çağıran taraf (gui/main_window.py) silmeden önce sürecin
         # çalışmadığından emin olmalı, burası sadece disk temizliği yapar.
         shutil.rmtree(self.packs_dir / "servers" / pack_id, ignore_errors=True)
+        shutil.rmtree(self.packs_dir / "backups" / pack_id, ignore_errors=True)
+
+    def backups_root(self, pack: Pack) -> Path:
+        return self.packs_dir / "backups" / pack.id
 
     def content_root(self, pack: Pack) -> Path:
         """Pack'e yüklenmiş shader/resourcepack/datapack/dünya dosyalarının
@@ -174,6 +178,8 @@ class PackManager:
         selected_world: str | None = ...,
         eula_accepted: bool | None = None,
         use_optimized_flags: bool | None = None,
+        auto_backup_minutes: int | None = None,
+        backup_keep: int | None = None,
     ) -> Pack:
         """set_mod_env'deki aynı "sadece verilenleri güncelle" deseni.
 
@@ -188,6 +194,10 @@ class PackManager:
             pack.server.eula_accepted = eula_accepted
         if use_optimized_flags is not None:
             pack.server.use_optimized_flags = use_optimized_flags
+        if auto_backup_minutes is not None:
+            pack.server.auto_backup_minutes = max(0, auto_backup_minutes)
+        if backup_keep is not None:
+            pack.server.backup_keep = max(0, backup_keep)
         self.save(pack)
         return pack
 

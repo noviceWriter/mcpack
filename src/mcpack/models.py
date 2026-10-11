@@ -152,6 +152,10 @@ class ServerRuntimeConfig(BaseModel):
     JVM bayrakları eklenir (bkz. server_runtime.build_launch_command) —
     Minecraft sunucusunun GC duraklamalarını azaltmak için, yıllardır
     bilinen/belgeli bir bayrak seti, bu projeye özgü değil."""
+    auto_backup_minutes: int = 0
+    """Sunucu çalışırken bu aralıkla otomatik dünya yedeği (0 = kapalı)."""
+    backup_keep: int = 10
+    """Saklanacak en fazla yedek sayısı (eskiler silinir; 0 = sınırsız)."""
 
 
 class Pack(BaseModel):

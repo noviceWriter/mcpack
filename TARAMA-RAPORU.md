@@ -55,7 +55,7 @@ maddenin şu anki halini gösterir.
 | Öneri | Durum |
 |---|---|
 | Mod güncelleme kontrolü | ✅ GUI (Modlar > ↑ Güncellemeleri Kontrol Et) + `mcpack-cli check-updates` |
-| Dünya yedekleme | ⏳ |
+| Dünya yedekleme | ✅ Sunucu > Yedekler: elle/otomatik, 'Hazırla' öncesi koruyucu yedek, güvenli geri yükleme; web paneli |
 | `.mrpack` / CurseForge zip **içe aktarma** (şu an sadece dışa aktarma var) | ✅ Kütüphane > İçe Aktar, sürükle-bırak, `mcpack-cli import` |
 | Mod silmede onay ve toplu seçim/silme | ✅ Çoklu seçim, onay, bağımlı modlar için ek uyarı |
 | Görev geçmişi (hangi export ne zaman bitti/neden patladı) | ✅ Geliştirici > Görevler |
@@ -109,5 +109,6 @@ maddenin şu anki halini gösterir.
 
 ## İlerleme (12 Ekim 2026)
 
-- ✅ 1. Atomik yazım · ✅ 2. Wurst/Meteor doğrulaması · ✅ 3. Anahtar zinciri · ✅ 4. Mod güncelleme kontrolü · ✅ 5. Modpack içe aktarma (gerçek bir paketle test edildi: Fabulously Optimized, 48/48 mod tanındı)
+- ✅ 1. Atomik yazım · ✅ 2. Wurst/Meteor doğrulaması · ✅ 3. Anahtar zinciri · ✅ 4. Mod güncelleme kontrolü · ✅ 5. Modpack içe aktarma (gerçek bir paketle test edildi: Fabulously Optimized, 48/48 mod tanındı) · ✅ 6. Dünya yedekleme (gerçek 1.20.1 sunucusunda çalışırken yedek + geri yükleme test edildi)
+- Ek bulgu: `prepare_server`, seçili dünya varsa sunucunun mevcut `world/` klasörünü siliyordu — artık önce otomatik yedekleniyor.
 - Ek: `mcpack-cli export` komutunun `content_root` eksikliği yüzünden çöktüğü fark edilip düzeltildi.

@@ -235,6 +235,18 @@ hiç gitmeden çalıştırır:
 mcpack kapatılırken hâlâ çalışan bir sunucu varsa, önce düzgünce
 durdurulsun mu diye sorulur (sessizce öksüz bırakmaz).
 
+**Dünya yedekleri** (Sunucu > Yedekler sekmesi):
+- **Şimdi Yedekle**: sunucunun dünyasını (ve nether/end klasörlerini) zip'ler.
+  Sunucu çalışıyorsa önce kayıt durdurulup diske boşaltılır
+  (`save-off` / `save-all flush` / `save-on`), böylece tutarlı bir kopya alınır.
+- **Otomatik yedek**: sunucu çalışırken 15 dk – 4 saat aralıkla; en fazla
+  kaç yedek tutulacağını siz seçersiniz (eskiler silinir).
+- **'Hazırla / Güncelle' öncesi**: pack'te sunucu için bir dünya seçiliyse,
+  mevcut sunucu dünyası üzerine yazılmadan önce otomatik yedeklenir.
+- **Geri Yükle** (sadece sunucu dururken): mevcut dünya silinmez,
+  `world.before-restore-<zaman>` olarak kenara taşınır.
+- Yedekler `packs/backups/<pack id>/` altındadır; web panelinden de alınabilir.
+
 ### 4.5 Web Paneli (tarayıcıdan sunucu yönetimi)
 
 Kenar çubuğundaki **🌐 Web Panelini Aç** (ya da Ayarlar > Web paneli)

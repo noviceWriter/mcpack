@@ -497,6 +497,37 @@ def create_app(*, manager: PackManager, registry: ServerProcessRegistry, setting
         items = parse_item_list_response(line) or []
         return {"items": [{"slot": i.slot, "item_id": i.item_id, "count": i.count} for i in items]}
 
+    # -- dünya yedekleri ----------------------------------------------------------
+
+    @app.get("/api/servers/{pack_id}/backups", dependencies=[auth_dep])
+    async def list_server_backups(pack_id: str, request: Request) -> dict:
+        from mcpack.backups import list_backups
+
+        mgr: PackManager = request.app.state.manager
+        pack = _load_pack_or_404(mgr, pack_id)
+        return {"backups": [
+            {"name": b.name, "created": b.created.isoformat(timespec="seconds"), "size": b.size, "label": b.label}
+            for b in list_backups(mgr.backups_root(pack))
+        ]}
+
+    @app.post("/api/servers/{pack_id}/backups", dependencies=[auth_dep])
+    async def create_server_backup(pack_id: str, request: Request) -> dict:
+        from mcpack.backups import BackupError, create_backup, prune
+
+        mgr: PackManager = request.app.state.manager
+        reg: ServerProcessRegistry = request.app.state.registry
+        pack = _load_pack_or_404(mgr, pack_id)
+        process = reg.get(pack.id)
+        process = process if process is not None and process.is_running else None
+        try:
+            info = await asyncio.to_thread(
+                create_backup, mgr.server_root(pack), mgr.backups_root(pack), label="manual", process=process
+            )
+        except BackupError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        prune(mgr.backups_root(pack), pack.server.backup_keep)
+        return {"name": info.name, "size": info.size}
+
     # -- hata ayıklama: loglar / ağ / istisnalar / sistem ----------------------
 
     @app.get("/api/debug/logs", dependencies=[auth_dep])

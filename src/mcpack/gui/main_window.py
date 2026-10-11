@@ -84,6 +84,7 @@ class MainWindow(QMainWindow):
 
         self._build_status_bar()
         self.toasts = ToastManager(root)
+        self.setAcceptDrops(True)
         self._wire()
         self._shortcuts()
         self.go("home")
@@ -197,6 +198,7 @@ class MainWindow(QMainWindow):
         sc("Ctrl+,", lambda: self.go("settings"))
         sc("F12", lambda: self.go("debug"))
         sc("Ctrl+N", self.new_pack)
+        sc("Ctrl+O", lambda: pack_actions.import_modpack(self, self.ctl))
         sc("Ctrl+F", self._focus_search)
         sc("Ctrl+Shift+D", self._toggle_debug)
 
@@ -284,6 +286,7 @@ class MainWindow(QMainWindow):
             cmds.append(Command(t(f"nav.{key}"), lambda k=key: self.go(k), g_nav, shortcut=shortcut))
         cmds += [
             Command(t("library.new_pack"), self.new_pack, g_act, shortcut="Ctrl+N"),
+            Command(t("palette.import"), lambda: pack_actions.import_modpack(self, self.ctl), g_act, shortcut="Ctrl+O"),
             Command(t("palette.toggle_web"), self.ctl.toggle_web_panel, g_act),
             Command(t("palette.toggle_debug"), self._toggle_debug, g_act, shortcut="Ctrl+Shift+D"),
             Command(t("palette.run_diag"), lambda: (self.go("debug", "system"), self.debug_page.system.run_diagnostics()), g_act),
@@ -389,6 +392,24 @@ class MainWindow(QMainWindow):
             log.debug("Kullanıcıya hata gösterildi: %s", message)
         self.toasts.show_toast(level, message, action=action)
         self.status_text.setText(message.splitlines()[0][:160])
+
+    # -- sürükle-bırak ile içe aktarma ---------------------------------------------------
+
+    @staticmethod
+    def _dropped_modpacks(event) -> list:
+        from pathlib import Path
+
+        urls = event.mimeData().urls() if event.mimeData().hasUrls() else []
+        return [Path(u.toLocalFile()) for u in urls if u.isLocalFile() and u.toLocalFile().lower().endswith((".mrpack", ".zip"))]
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if self._dropped_modpacks(event):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        for path in self._dropped_modpacks(event):
+            pack_actions.import_modpack(self, self.ctl, path)
+        event.acceptProposedAction()
 
     # -- kapanış ---------------------------------------------------------------------
 

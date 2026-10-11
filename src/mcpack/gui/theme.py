@@ -45,6 +45,7 @@ CATEGORY_COLORS: dict[str, str] = {
     "curseforge": "#f16436",
     "wurst": "#d55181",
     "meteor": "#9085e9",
+    "url": "#4fb6f0",
     "vanilla": "#7d8798",
     "fabric": "#dbb36b",
     "quilt": "#c873d6",

@@ -32,6 +32,10 @@ class ModSourceType(StrEnum):
     UYGULAMAZ — sadece PackManager.add_cheat_mod ile doğrudan eklenir."""
     METEOR = "meteor"
     """Meteor Client — aynı sebeple (bkz. WURST) kendi API'sinden indirilir."""
+    URL = "url"
+    """Doğrudan indirme adresi — içe aktarılan bir .mrpack'te Modrinth'in
+    tanımadığı (ör. GitHub'dan indirilen) dosyalar. Arama/güncelleme/fork
+    akışlarına girmez; export/sunucu/SKLauncher hash'le doğrulayarak indirir."""
 
 
 class EnvRequirement(StrEnum):

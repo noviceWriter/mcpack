@@ -106,6 +106,7 @@ class LibraryPage(QWidget):
         self.count_label = label("", role="muted")
         col.addWidget(self.count_label)
         head.addLayout(col, 1)
+        head.addWidget(button(t("library.import"), on_click=lambda: pack_actions.import_modpack(self, ctl), tooltip=t("library.import_tooltip")))
         head.addWidget(button(t("library.new_pack"), variant="primary", on_click=self.new_pack))
         outer.addLayout(head)
 

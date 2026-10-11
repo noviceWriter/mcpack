@@ -319,7 +319,7 @@ class ModsTab(QWidget):
         bar.addWidget(self.search, 1)
         self.source_filter = QComboBox()
         self.source_filter.addItem(t("mods.all_sources"), "")
-        for s in ("modrinth", "curseforge", "wurst", "meteor"):
+        for s in ("modrinth", "curseforge", "url", "wurst", "meteor"):
             self.source_filter.addItem(source_label(s), s)
         self.source_filter.currentIndexChanged.connect(lambda _i: self._apply_filter())
         self.env_filter = QComboBox()

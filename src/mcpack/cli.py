@@ -11,6 +11,7 @@ için kullanılır (proje-amacı.md §8, adım 7).
     mcpack-cli fork <pack_id> --minecraft 1.21.1
     mcpack-cli export <pack_id> mrpack --output ./out/pack.mrpack
     mcpack-cli check-updates <pack_id> [--apply]
+    mcpack-cli import ./paket.mrpack
 """
 
 from __future__ import annotations
@@ -233,6 +234,32 @@ async def cmd_check_updates(args: argparse.Namespace, settings: Settings) -> Non
             await curseforge.aclose()
 
 
+async def cmd_import(args: argparse.Namespace, settings: Settings) -> None:
+    from mcpack.importers import ModpackImportError, import_modpack
+
+    manager = _manager(settings)
+    modrinth = ModrinthClient()
+    curseforge = CurseForgeClient(settings.curseforge_api_key) if settings.curseforge_api_key else None
+    try:
+        result = await import_modpack(manager, Path(args.file), modrinth=modrinth, curseforge=curseforge, name=args.name)
+    except ModpackImportError as exc:
+        print(f"İçe aktarılamadı: {exc}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        await modrinth.aclose()
+        if curseforge:
+            await curseforge.aclose()
+    pack = result.pack
+    print(f"İçe aktarıldı ({result.format}): {pack.id}  {pack.name}  [{pack.loader.value} {pack.loader_version} / mc {pack.minecraft}]")
+    print(f"  {result.mods} mod, {result.content} içerik, {result.worlds} dünya")
+    if result.url_sourced:
+        print(f"  Modrinth'te tanınmayıp URL ile eklenen: {', '.join(result.url_sourced)}")
+    if result.overrides_dir:
+        print(f"  overrides: {result.overrides_dir}  ({', '.join(pack.overrides.include)})")
+    for item in result.skipped:
+        print(f"  ! atlandı: {item}", file=sys.stderr)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mcpack-cli", description="Minecraft mod paket yöneticisi CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -301,6 +328,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", required=True)
     p.add_argument("--source-dir", help="overrides için kaynak dizin (config, kubejs, ...)")
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("import", help=".mrpack ya da CurseForge modpack .zip içe aktar")
+    p.add_argument("file")
+    p.add_argument("--name", help="Pack adı (varsayılan: paketteki ad)")
+    p.set_defaults(func=cmd_import)
 
     p = sub.add_parser("check-updates", help="Pack'teki mod/içerik güncellemelerini kontrol et")
     p.add_argument("pack_id")

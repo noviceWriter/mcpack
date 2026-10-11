@@ -65,6 +65,9 @@ class ModDetail(BaseModel):
     client_side: EnvRequirement = EnvRequirement.REQUIRED
     server_side: EnvRequirement = EnvRequirement.REQUIRED
     categories: list[str] = Field(default_factory=list)
+    class_id: int | None = None
+    """Sadece CurseForge: projenin sınıfı (6 mod, 12 kaynak paketi, 6552
+    shader, 6945 datapack, 17 dünya) — içe aktarmada türü ayırt etmek için."""
 
 
 class SourceAPIError(Exception):

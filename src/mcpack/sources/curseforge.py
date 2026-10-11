@@ -216,6 +216,46 @@ class CurseForgeClient(ModSource):
             title=mod["name"],
             description=mod.get("summary", ""),
             categories=[c.get("name", "") for c in mod.get("categories", [])],
+            class_id=mod.get("classId"),
+        )
+
+    async def get_file(self, project_id: str, file_id: str) -> ModVersion:
+        """Tek bir dosyanın (CurseForge "file" = sürüm) bilgisi — modpack
+        manifest'i projectID/fileID çiftleriyle geldiği için içe aktarmada
+        kullanılır. İndirme izni kapalıysa (downloadUrl yok) SourceAPIError."""
+        response = await self._get(f"/v1/mods/{project_id}/files/{file_id}")
+        version = self._parse_file(response.json().get("data", {}), None)
+        if version is None:
+            raise SourceAPIError(
+                f"CurseForge dosyası {project_id}/{file_id}: yazar üçüncü taraf indirmeye izin vermiyor (downloadUrl yok)."
+            )
+        return version
+
+    def _parse_file(self, f: dict, loader: Loader | None) -> ModVersion | None:
+        sha1 = next((h["value"] for h in f.get("hashes", []) if h.get("algo") == 1), None)
+        download_url = f.get("downloadUrl")
+        if not download_url:
+            # Bazı modlarda yayıncı "3rd party download" iznini kapatmıştır;
+            # bu durumda downloadUrl None gelir ve indirme mümkün olmaz.
+            return None
+        deps = [
+            VersionDependency(
+                project_id=str(d["modId"]),
+                dependency_type=_RELATION_TYPE_MAP.get(d.get("relationType", 3), "required"),
+            )
+            for d in f.get("dependencies", [])
+        ]
+        return ModVersion(
+            source=self.name,
+            version_id=str(f["id"]),
+            project_id=str(f["modId"]),
+            name=f.get("displayName", f.get("fileName", "")),
+            game_versions=list(f.get("gameVersions", [])),
+            loaders=[loader.value] if loader else [],
+            dependencies=deps,
+            files=[
+                VersionFile(file_name=f["fileName"], url=download_url, sha1=sha1, size=f.get("fileLength"), primary=True)
+            ],
         )
 
     async def get_versions(
@@ -234,46 +274,7 @@ class CurseForgeClient(ModSource):
         response = await self._get(f"/v1/mods/{project_id}/files", params=params)
         data = response.json().get("data", [])
 
-        versions = []
-        for f in data:
-            sha1 = next(
-                (h["value"] for h in f.get("hashes", []) if h.get("algo") == 1), None
-            )
-            download_url = f.get("downloadUrl")
-            if not download_url:
-                # Bazı modlarda yayıncı "3rd party download" iznini kapatmıştır;
-                # bu durumda downloadUrl None gelir ve indirme mümkün olmaz.
-                continue
-
-            deps = [
-                VersionDependency(
-                    project_id=str(d["modId"]),
-                    dependency_type=_RELATION_TYPE_MAP.get(d.get("relationType", 3), "required"),
-                )
-                for d in f.get("dependencies", [])
-            ]
-
-            versions.append(
-                ModVersion(
-                    source=self.name,
-                    version_id=str(f["id"]),
-                    project_id=str(f["modId"]),
-                    name=f.get("displayName", f.get("fileName", "")),
-                    game_versions=[gv for gv in f.get("gameVersions", [])],
-                    loaders=[loader.value] if loader else [],
-                    dependencies=deps,
-                    files=[
-                        VersionFile(
-                            file_name=f["fileName"],
-                            url=download_url,
-                            sha1=sha1,
-                            size=f.get("fileLength"),
-                            primary=True,
-                        )
-                    ],
-                )
-            )
-        return versions
+        return [v for v in (self._parse_file(f, loader) for f in data) if v is not None]
 
     async def get_download_url(self, project_id: str, file_id: str) -> str:
         """downloadUrl None gelen dosyalar için ayrı endpoint (bazı durumlarda hâlâ boş dönebilir)."""

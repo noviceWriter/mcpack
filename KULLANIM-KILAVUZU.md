@@ -49,6 +49,15 @@ komut paletini açıp sayfa, pack ya da eylem arayabilirsiniz.
   mod sayısı, MC sürümü) var. Karta tıklamak pack'i açar; sağ tık ya da
   **⋯** menüsü: bilgileri düzenle, kopyala, fork, dışa aktar, klasörleri
   aç, sil.
+- **⇪ İçe Aktar** (Ctrl+O ya da dosyayı pencereye sürükleyip bırakın):
+  Modrinth `.mrpack` veya CurseForge modpack `.zip` dosyasından yeni bir
+  pack oluşturur. Modlar Modrinth'te dosya hash'iyle (tek istekte),
+  CurseForge'ta proje/dosya kimliğiyle (API anahtarı gerekir) tanınır;
+  Modrinth'te bulunmayan dosyalar doğrudan indirme adresiyle (hash
+  doğrulamalı) eklenir. Paketin `overrides/` dosyaları (config, kubejs…)
+  pack'in kendi klasörüne açılır, içindeki dünyalar Dünyalar bölümüne
+  taşınır; dışa aktarırken **İçe aktarılan overrides** seçeneğiyle tekrar
+  pakete eklenir.
 - **+ Yeni Pack** (Ctrl+N): ad, Minecraft sürümü, loader ve loader sürümü.
   Sürümler resmi listelerden gelir; en yeni ve sağlayıcının **★ önerilen**
   sürümü işaretlenir.

@@ -56,7 +56,7 @@ maddenin şu anki halini gösterir.
 |---|---|
 | Mod güncelleme kontrolü | ✅ GUI (Modlar > ↑ Güncellemeleri Kontrol Et) + `mcpack-cli check-updates` |
 | Dünya yedekleme | ⏳ |
-| `.mrpack` / CurseForge zip **içe aktarma** (şu an sadece dışa aktarma var) | ⏳ |
+| `.mrpack` / CurseForge zip **içe aktarma** (şu an sadece dışa aktarma var) | ✅ Kütüphane > İçe Aktar, sürükle-bırak, `mcpack-cli import` |
 | Mod silmede onay ve toplu seçim/silme | ✅ Çoklu seçim, onay, bağımlı modlar için ek uyarı |
 | Görev geçmişi (hangi export ne zaman bitti/neden patladı) | ✅ Geliştirici > Görevler |
 | Sistem teşhisi (Java, ağ erişimi, CF anahtarı, disk tek ekranda) | ✅ Geliştirici > Sistem > Teşhis |
@@ -109,5 +109,5 @@ maddenin şu anki halini gösterir.
 
 ## İlerleme (12 Ekim 2026)
 
-- ✅ 1. Atomik yazım · ✅ 2. Wurst/Meteor doğrulaması · ✅ 3. Anahtar zinciri · ✅ 4. Mod güncelleme kontrolü
+- ✅ 1. Atomik yazım · ✅ 2. Wurst/Meteor doğrulaması · ✅ 3. Anahtar zinciri · ✅ 4. Mod güncelleme kontrolü · ✅ 5. Modpack içe aktarma (gerçek bir paketle test edildi: Fabulously Optimized, 48/48 mod tanındı)
 - Ek: `mcpack-cli export` komutunun `content_root` eksikliği yüzünden çöktüğü fark edilip düzeltildi.

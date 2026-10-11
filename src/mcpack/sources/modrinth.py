@@ -128,7 +128,9 @@ class ModrinthClient(ModSource):
 
     async def get_project(self, project_id: str) -> ModDetail:
         response = await self._get(f"/project/{project_id}")
-        data = response.json()
+        return self._parse_project(response.json())
+
+    def _parse_project(self, data: dict) -> ModDetail:
         return ModDetail(
             source=self.name,
             project_id=data["id"],
@@ -188,6 +190,25 @@ class ModrinthClient(ModSource):
             dependencies=deps,
             files=files,
         )
+
+    async def versions_for_hashes(self, sha1_hashes: list[str]) -> dict[str, ModVersion]:
+        """POST /version_files: her SHA-1 hash'inin AİT OLDUĞU sürüm (tek
+        istekte). Modrinth'in tanımadığı dosyalar sonuçta yer almaz."""
+        if not sha1_hashes:
+            return {}
+        response = await self._get("/version_files", json_body={"hashes": sha1_hashes, "algorithm": "sha1"})
+        return {h.lower(): self._parse_version(v) for h, v in response.json().items()}
+
+    async def get_projects(self, project_ids: list[str]) -> dict[str, ModDetail]:
+        """GET /projects?ids=[...]: birden çok projenin ayrıntısı tek istekte."""
+        result: dict[str, ModDetail] = {}
+        ids = list(dict.fromkeys(project_ids))
+        for i in range(0, len(ids), 100):
+            chunk = ids[i : i + 100]
+            response = await self._get("/projects", params={"ids": json.dumps(chunk)})
+            for data in response.json():
+                result[data["id"]] = self._parse_project(data)
+        return result
 
     async def latest_versions_for_hashes(
         self,

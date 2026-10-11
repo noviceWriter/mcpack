@@ -13,6 +13,7 @@ SOURCE_LABELS = {
     "curseforge": "CurseForge",
     "wurst": "Wurst Client",
     "meteor": "Meteor Client",
+    "url": "URL",
 }
 
 LOADER_LABELS = {

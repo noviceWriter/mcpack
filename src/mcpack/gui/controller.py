@@ -285,6 +285,32 @@ class AppController(QObject):
 
         self._run(t("ctl.task.fork", name=pack.name, minecraft=values["minecraft"]), task, on_success=success, category="pack")
 
+    def import_modpack(self, path: Path, on_done: Callable[[object], None] | None = None) -> None:
+        from mcpack.importers import import_modpack
+
+        async def task(ctx: TaskContext):
+            modrinth, curseforge = self._clients()
+            try:
+                return await import_modpack(
+                    self.manager, path, modrinth=modrinth, curseforge=curseforge, progress_cb=ctx.progress
+                )
+            finally:
+                await modrinth.aclose()
+                if curseforge:
+                    await curseforge.aclose()
+
+        def success(result) -> None:
+            self._pack_cache[result.pack.id] = result.pack
+            self.packs_changed.emit()
+            self.notify.emit(
+                "warning" if result.skipped else "success",
+                t("ctl.import_done", name=result.pack.name, mods=result.mods, content=result.content, worlds=result.worlds),
+            )
+            if on_done:
+                on_done(result)
+
+        self._run(t("ctl.task.import", name=path.name), task, on_success=success, category="pack")
+
     # ------------------------------------------------------------------ arama / ekleme
 
     def search(

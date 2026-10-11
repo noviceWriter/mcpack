@@ -62,18 +62,27 @@ def _pick_source_dir(parent: QWidget) -> Path | None:
     return Path(chosen) if chosen else None
 
 
-def _ask_overrides(parent: QWidget) -> Path | None | bool:
-    """True -> overrides istenmiyor (boş klasör), Path -> seçilen, False -> iptal."""
-    choice, ok = QInputDialog.getItem(
-        parent, t("export.overrides_title"), t("export.overrides_body"),
-        [t("export.overrides_none"), t("export.overrides_pick")], 0, False,
-    )
+def _ask_overrides(parent: QWidget, imported: Path | None = None) -> Path | None | bool:
+    """True -> overrides istenmiyor (boş klasör), Path -> seçilen, False -> iptal.
+    imported: pack içe aktarılırken açılmış overrides klasörü (varsa ilk seçenek)."""
+    options = [t("export.overrides_none"), t("export.overrides_pick")]
+    if imported is not None and imported.is_dir():
+        options.insert(0, t("export.overrides_imported"))
+    choice, ok = QInputDialog.getItem(parent, t("export.overrides_title"), t("export.overrides_body"), options, 0, False)
     if not ok:
         return False
+    if choice == t("export.overrides_imported"):
+        return imported
     if choice == t("export.overrides_none"):
         return True
     picked = _pick_source_dir(parent)
     return picked if picked is not None else False
+
+
+def _imported_overrides(ctl: AppController, pack: Pack) -> Path:
+    from mcpack.importers import OVERRIDES_DIR
+
+    return ctl.manager.content_root(pack) / OVERRIDES_DIR
 
 
 def _empty_dir(ctl: AppController, pack: Pack) -> Path:
@@ -109,7 +118,7 @@ def export(parent: QWidget, ctl: AppController, pack: Pack, fmt: str) -> None:
         )
         if not output:
             return
-        overrides = _ask_overrides(parent)
+        overrides = _ask_overrides(parent, _imported_overrides(ctl, pack))
         if overrides is False:
             return
         source = _empty_dir(ctl, pack) if overrides is True else overrides
@@ -131,7 +140,7 @@ def server_pack(parent: QWidget, ctl: AppController, pack: Pack) -> None:
         output, _ = QFileDialog.getSaveFileName(parent, t("serverpack.save_title"), f"{pack.name}-server.zip", "*.zip")
         if not output:
             return
-        overrides = _ask_overrides(parent)
+        overrides = _ask_overrides(parent, _imported_overrides(ctl, pack))
         if overrides is False:
             return
         source = _empty_dir(ctl, pack) if overrides is True else overrides
@@ -155,7 +164,7 @@ def sklauncher(parent: QWidget, ctl: AppController, pack: Pack) -> None:
         return
 
     def proceed() -> None:
-        overrides = _ask_overrides(parent)
+        overrides = _ask_overrides(parent, _imported_overrides(ctl, pack))
         if overrides is False:
             return
         ctl.run_sklauncher(pack, _empty_dir(ctl, pack) if overrides is True else overrides)
@@ -193,3 +202,38 @@ def context_menu(parent: QWidget, ctl: AppController, pack: Pack, *, include_ope
     menu.addSeparator()
     menu.addAction(t("pack.delete"), lambda: delete(parent, ctl, pack))
     return menu
+
+
+IMPORT_FILTER = "Modpack (*.mrpack *.zip)"
+
+
+def import_modpack(parent: QWidget, ctl: AppController, path: Path | None = None) -> None:
+    if path is None:
+        chosen, _ = QFileDialog.getOpenFileName(parent, t("import.pick_title"), str(Path.home()), IMPORT_FILTER)
+        if not chosen:
+            return
+        path = Path(chosen)
+    from mcpack.importers import detect_format
+
+    fmt = detect_format(path)
+    if fmt is None:
+        info(parent, t("import.invalid_title"), t("import.invalid_body", name=path.name), warning=True)
+        return
+    if fmt == "curseforge" and not ctl.has_curseforge():
+        info(parent, t("import.cf_key_title"), t("import.cf_key_body"), warning=True)
+        ctl.navigate.emit("settings", "")
+        return
+
+    def done(result) -> None:
+        notes = []
+        if result.url_sourced:
+            notes.append(t("import.url_sourced", count=len(result.url_sourced), list=", ".join(result.url_sourced[:8])))
+        if result.overrides_dir is not None:
+            notes.append(t("import.overrides_kept", list=", ".join(result.pack.overrides.include[:10])))
+        if result.skipped:
+            notes.append(t("import.skipped", list="\n".join(f"• {x}" for x in result.skipped[:15])))
+        if notes:
+            info(parent, t("import.summary_title", name=result.pack.name), "\n\n".join(notes), warning=bool(result.skipped))
+        ctl.navigate.emit("pack", result.pack.id)
+
+    ctl.import_modpack(path, on_done=done)

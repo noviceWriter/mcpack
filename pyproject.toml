@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.6",
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
+    "keyring>=24",
 ]
 
 [project.optional-dependencies]

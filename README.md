@@ -56,7 +56,11 @@ pytest
 GUI'de **Ayarlar** menüsünden (CF API key, SKLauncher yolu, Modrinth tercihi,
 export'ta hariç tutulacak logs/crash-reports/saves) ya da doğrudan
 `~/.config/mcpack/settings.json` (Linux) / `%APPDATA%/mcpack/settings.json`
-(Windows) dosyasından yapılandırılır. API key koda gömülmez, repo dışında kalır.
+(Windows) dosyasından yapılandırılır. CurseForge API anahtarı ve web paneli
+şifresi koda gömülmez; işletim sisteminin anahtar zincirinde saklanır (Linux:
+Secret Service, Windows: Credential Manager, macOS: Keychain). Anahtar zinciri
+yoksa `600` izinli ayar dosyasına düşülür; `MCPACK_DISABLE_KEYRING=1` ile
+kapatılabilir.
 
 ## Loglama ve hata ayıklama
 

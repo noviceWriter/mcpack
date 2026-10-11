@@ -31,6 +31,8 @@ def default_packs_dir() -> Path:
 
 
 SETTINGS_FILE = "settings.json"
+SECRET_FIELDS = ("curseforge_api_key", "web_panel_password")
+"""Anahtar zincirinde saklanan alanlar (bkz. secret_store.py)."""
 
 
 class Settings(BaseModel):
@@ -58,6 +60,9 @@ class Settings(BaseModel):
     debug_mode: bool = False
     """Açıksa uygulama DEBUG log seviyesiyle başlar (bkz. logging_setup.py)
     — Geliştirici sayfasından çalışma anında da açılıp kapatılabilir."""
+    secrets_in_keyring: bool = False
+    """True ise SECRET_FIELDS settings.json'da DEĞİL işletim sisteminin
+    anahtar zincirinde durur (dosyada boş string olarak görünür)."""
     language: str = "tr"
     """Arayüz dili ("tr" veya "en") — bkz. mcpack.i18n. Değişiklik
     sadece uygulama yeniden başlatılınca etkili olur."""
@@ -79,18 +84,31 @@ class Settings(BaseModel):
 
     @classmethod
     def load(cls) -> Settings:
+        from mcpack import secret_store
+        from mcpack.logging_setup import get_logger
+
+        log = get_logger(__name__)
         path = config_dir() / SETTINGS_FILE
         if not path.exists():
             return cls()
         try:
             settings = cls.model_validate_json(path.read_text(encoding="utf-8"))
-            settings.theme = "dark"
-            return settings
         except (json.JSONDecodeError, ValueError) as exc:
-            from mcpack.logging_setup import get_logger
-
-            get_logger(__name__).warning("Ayar dosyası bozuk, varsayılanlar kullanılıyor: %s (%s)", path, exc)
+            log.warning("Ayar dosyası bozuk, varsayılanlar kullanılıyor: %s (%s)", path, exc)
             return cls()
+        settings.theme = "dark"
+        if settings.secrets_in_keyring:
+            for name in SECRET_FIELDS:
+                value = secret_store.get_secret(name)
+                if value is None:
+                    log.warning("Gizli ayar '%s' anahtar zincirinden okunamadı (depo kullanılamıyor)", name)
+                    value = ""
+                setattr(settings, name, value)
+        elif any(getattr(settings, n) for n in SECRET_FIELDS) and secret_store.available():
+            # Eski sürümden kalan düz metin anahtarları anahtar zincirine taşı.
+            log.info("Gizli ayarlar düz metinden anahtar zincirine taşınıyor (%s)", secret_store.backend_name())
+            settings.save()
+        return settings
 
     def backup_file(self) -> Path | None:
         """Mevcut settings.json'u settings.backup-<zaman>.json olarak kopyalar
@@ -116,7 +134,17 @@ class Settings(BaseModel):
         return fresh
 
     def save(self) -> None:
-        path = config_dir() / SETTINGS_FILE
+        from mcpack import secret_store
         from mcpack.fsutil import atomic_write_text
 
-        atomic_write_text(path, json.dumps(self.model_dump(), indent=2, ensure_ascii=False))
+        data = self.model_dump()
+        stored = secret_store.available() and all(
+            secret_store.set_secret(name, getattr(self, name)) for name in SECRET_FIELDS
+        )
+        if stored:
+            for name in SECRET_FIELDS:
+                data[name] = ""
+        data["secrets_in_keyring"] = bool(stored)
+        self.secrets_in_keyring = bool(stored)
+        # Düz metne düşülse bile dosya sadece kullanıcı tarafından okunabilir olsun.
+        atomic_write_text(config_dir() / SETTINGS_FILE, json.dumps(data, indent=2, ensure_ascii=False), mode=0o600)

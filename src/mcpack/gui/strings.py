@@ -551,7 +551,14 @@ _S: dict[str, tuple[str, str]] = {
     "settings.cf_placeholder": ("console.curseforge.com'dan alınır", "Get one at console.curseforge.com"),
     "settings.show": ("Göster", "Show"),
     "settings.test": ("Test Et", "Test"),
-    "settings.cf_help": ("Anahtar sadece bu bilgisayardaki ayar dosyasında saklanır, koda gömülmez.", "The key is only stored in this computer's settings file."),
+    "settings.secrets_keyring": (
+        "🔒 API anahtarı ve web paneli şifresi işletim sisteminin anahtar zincirinde saklanıyor ({backend}); ayar dosyasında yer almıyor.",
+        "🔒 The API key and web panel password are stored in the OS keyring ({backend}), not in the settings file.",
+    ),
+    "settings.secrets_plaintext": (
+        "⚠ Anahtar zinciri kullanılamıyor — API anahtarı ve şifre ayar dosyasında (sadece sizin okuyabileceğiniz izinlerle) saklanıyor.",
+        "⚠ No OS keyring available — the API key and password are stored in the settings file (readable only by you).",
+    ),
     "settings.cf_empty": ("Önce bir anahtar girin.", "Enter a key first."),
     "settings.checking": ("Kontrol ediliyor…", "Checking…"),
     "settings.cf_ok": ("✓ Bağlandı: {game}", "✓ Connected: {game}"),

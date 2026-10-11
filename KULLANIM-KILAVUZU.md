@@ -252,7 +252,9 @@ değişiklik varsa başlıkta gösterilir, pencereyi kapatırken sorulur).
 - **Genel**: arayüz dili (yeniden başlatınca etkili olur; web paneli de aynı
   dili kullanır) ve **Debug modu** (bkz. 7).
 - **Mod kaynakları**: CurseForge API anahtarı (**Test Et** ile doğrulanır),
-  Modrinth tercihi.
+  Modrinth tercihi. Anahtar ve web paneli şifresi işletim sisteminin anahtar
+  zincirinde saklanır (eski sürümden kalan düz metin anahtar ilk açılışta
+  otomatik taşınır); kart bunun nerede saklandığını gösterir.
 - **Başlatıcı ve Java**: SKLauncher yolu, Java yolu (**Algıla** sürümü de
   gösterir; boşsa PATH'teki `java`).
 - **Web paneli**: port, şifre, başlat/durdur (bkz. 4.5).

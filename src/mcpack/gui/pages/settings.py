@@ -102,7 +102,15 @@ class SettingsPage(QWidget):
         form.addRow(t("settings.cf_key"), key_row)
         self.cf_status = label("", role="dim", wrap=True)
         form.addRow("", self.cf_status)
-        form.addRow("", label(t("settings.cf_help"), role="dim", wrap=True))
+        from mcpack import secret_store
+
+        backend = secret_store.backend_name()
+        storage_note = label(
+            t("settings.secrets_keyring", backend=backend) if backend else t("settings.secrets_plaintext"),
+            role="dim", wrap=True,
+        )
+        storage_note.setStyleSheet(f"color: {COLORS['success'] if backend else COLORS['warning']};")
+        form.addRow("", storage_note)
         self.prefer_modrinth = QCheckBox(t("settings.prefer_modrinth"))
         form.addRow("", self.prefer_modrinth)
 

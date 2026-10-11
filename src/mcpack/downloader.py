@@ -54,8 +54,14 @@ def compute_hash(path: Path, algo: str) -> str:
     return h.hexdigest()
 
 
-def verify_hashes(path: Path, *, sha1: str | None = None, sha512: str | None = None) -> None:
+def verify_hashes(
+    path: Path, *, sha1: str | None = None, sha512: str | None = None, sha256: str | None = None
+) -> None:
     """Verilen hash'leri dosyayla karşılaştırır, uyuşmazsa HashMismatchError fırlatır."""
+    if sha256:
+        actual = compute_hash(path, "sha256")
+        if actual.lower() != sha256.lower():
+            raise HashMismatchError(path, "sha256", sha256, actual)
     if sha1:
         actual = compute_hash(path, "sha1")
         if actual.lower() != sha1.lower():
@@ -126,6 +132,7 @@ async def download_file(
     *,
     sha1: str | None = None,
     sha512: str | None = None,
+    sha256: str | None = None,
     progress_cb: ProgressCallback | None = None,
     max_retries: int = 3,
     cancel_event: threading.Event | None = None,
@@ -163,8 +170,8 @@ async def download_file(
                         if progress_cb:
                             progress_cb(downloaded, total)
             tmp_path.replace(dest)
-            if sha1 or sha512:
-                verify_hashes(dest, sha1=sha1, sha512=sha512)
+            if sha1 or sha512 or sha256:
+                verify_hashes(dest, sha1=sha1, sha512=sha512, sha256=sha256)
             log.debug("İndirildi: %s (%d bayt, deneme %d)", dest.name, downloaded, attempt)
             return dest
         except DownloadCancelledError:

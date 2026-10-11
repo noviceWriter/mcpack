@@ -27,7 +27,7 @@ from mcpack.models import (
 )
 from mcpack.packs import storage
 from mcpack.sources.base import ModDetail, ModSource, ModVersion
-from mcpack.sources.cheat_mods import CheatModUnavailableError, find_meteor_download, find_wurst_download
+from mcpack.sources.cheat_mods import CheatModFile, CheatModUnavailableError, download_cheat_mod
 
 from mcpack.logging_setup import get_logger
 
@@ -325,7 +325,16 @@ class PackManager:
     _CHEAT_MOD_LABELS = {ModSourceType.WURST: "Wurst Client", ModSourceType.METEOR: "Meteor Client"}
     _CHEAT_MOD_PROJECT_IDS = {ModSourceType.WURST: "wurst", ModSourceType.METEOR: "meteor"}
 
-    def add_cheat_mod(self, pack: Pack, source: ModSourceType, file_name: str, download_url: str) -> ModEntry:
+    def add_cheat_mod(
+        self,
+        pack: Pack,
+        source: ModSourceType,
+        file_name: str,
+        download_url: str,
+        *,
+        hashes: ModHashes | None = None,
+        file_size: int | None = None,
+    ) -> ModEntry:
         """Wurst/Meteor gibi CurseForge/Modrinth'te barındırılmayan hile
         modları için — normal add_mod'un aksine ModSource/ModVersion arama
         akışından geçmez, zaten çözülmüş (dosya_adı, indirme_url) çiftini
@@ -347,12 +356,21 @@ class PackManager:
             version_id=file_name,
             file_name=file_name,
             download_url=download_url,
-            hashes=ModHashes(),
+            file_size=file_size,
+            hashes=hashes or ModHashes(),
             env=ModEnv(client=EnvRequirement.REQUIRED, server=EnvRequirement.UNSUPPORTED),
         )
         pack.mods.append(entry)
         self.save(pack)
         return entry
+
+    def add_cheat_mod_file(self, pack: Pack, source: ModSourceType, cheat: CheatModFile) -> ModEntry:
+        """download_cheat_mod'un doğrulanmış sonucunu hash'leriyle ekler."""
+        return self.add_cheat_mod(
+            pack, source, cheat.file_name, cheat.url,
+            hashes=ModHashes(sha1=cheat.sha1, sha512=cheat.sha512, sha256=cheat.sha256),
+            file_size=cheat.size,
+        )
 
     def set_mod_env(
         self,
@@ -548,14 +566,11 @@ class PackManager:
             label = mod.name or mod.file_name
             if mod.source in (ModSourceType.WURST, ModSourceType.METEOR):
                 try:
-                    if mod.source == ModSourceType.WURST:
-                        file_name, url = await find_wurst_download(http_client, minecraft)
-                    else:
-                        file_name, url = await find_meteor_download(http_client, minecraft)
+                    cheat = await download_cheat_mod(http_client, mod.source, minecraft)
                 except CheatModUnavailableError:
                     failed.append(label)
                     continue
-                self.add_cheat_mod(new_pack, mod.source, file_name, url)
+                self.add_cheat_mod_file(new_pack, mod.source, cheat)
                 continue
 
             source = _source_for(mod.source)

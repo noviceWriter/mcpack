@@ -65,6 +65,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "tr": "Sunucu çalıştırılabilir değil — önce 'Hazırla' (ve gerekiyorsa 'Kur') yapın.",
         "en": "The server isn't runnable yet — run 'Prepare' (and 'Install' if needed) first.",
     },
+    "cheat.error.file_changed": {
+        "tr": "{name}: indirilen dosya, pack'e eklenirken kaydedilen dosyayla aynı değil (büyük ihtimalle yeni bir build yayınlandı). Güvenlik için pakete eklenmedi — Hile Modları bölümünden kaldırıp yeniden ekleyin.",
+        "en": "{name}: the downloaded file doesn't match the one recorded when it was added (most likely a new build was published). It was not included for safety — remove it in Cheat Mods and add it again.",
+    },
     "runtime.error.already_running": {"tr": "Sunucu zaten çalışıyor.", "en": "The server is already running."},
     "runtime.error.not_running_cant_send": {
         "tr": "Sunucu çalışmıyor, komut gönderilemedi.",

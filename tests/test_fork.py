@@ -7,6 +7,7 @@ CurseForge/Wurst/Meteor) yeni MC versiyonu için yeniden aranması, bulunamayan
 modların SESSİZCE değil isim listesiyle atlanması, ve yerel içeriğin (dünya)
 MC versiyonundan bağımsız olarak doğrudan kopyalanması."""
 
+import hashlib
 from pathlib import Path
 
 import httpx
@@ -161,10 +162,15 @@ async def test_fork_pack_re_resolves_cheat_mods_for_new_mc_version(tmp_path: Pat
         "https://x/old.jar",
     )
 
+    jar = b"wurst-jar-bytes"
     releases = [
         {
             "assets": [
-                {"name": "Wurst-Client-v7.50-MC1.21.1.jar", "browser_download_url": "https://x/new.jar"},
+                {
+                    "name": "Wurst-Client-v7.50-MC1.21.1.jar",
+                    "browser_download_url": "https://x/new.jar",
+                    "digest": "sha256:" + hashlib.sha256(jar).hexdigest(),
+                },
             ]
         }
     ]
@@ -172,6 +178,7 @@ async def test_fork_pack_re_resolves_cheat_mods_for_new_mc_version(tmp_path: Pat
 
     with respx.mock:
         respx.get(WURST_RELEASES_API).mock(return_value=httpx.Response(200, json=releases))
+        respx.get("https://x/new.jar").mock(return_value=httpx.Response(200, content=jar))
         async with httpx.AsyncClient() as http_client:
             new_pack, failed = await manager.fork_pack(
                 pack, name="Fork", minecraft="1.21.1", loader_version="0.16.5",
@@ -182,6 +189,10 @@ async def test_fork_pack_re_resolves_cheat_mods_for_new_mc_version(tmp_path: Pat
     wurst_entry = new_pack.find_mod("wurst")
     assert wurst_entry is not None
     assert wurst_entry.file_name == "Wurst-Client-v7.50-MC1.21.1.jar"
+    # Fork sırasında da indirilip doğrulanır, hash'ler kaydedilir.
+    assert wurst_entry.hashes.sha1 == hashlib.sha1(jar).hexdigest()
+    assert wurst_entry.hashes.sha256 == hashlib.sha256(jar).hexdigest()
+    assert wurst_entry.file_size == len(jar)
 
 
 @pytest.mark.asyncio

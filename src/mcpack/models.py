@@ -64,6 +64,9 @@ class ModEnv(BaseModel):
 class ModHashes(BaseModel):
     sha1: str | None = None
     sha512: str | None = None
+    sha256: str | None = None
+    """Sadece kaynağın kendisi SHA-256 yayınlıyorsa (ör. Wurst'ün GitHub
+    release asset'leri) doldurulur."""
 
 
 class DownloadableFile(BaseModel):

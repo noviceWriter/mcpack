@@ -15,8 +15,9 @@ from pathlib import Path
 
 import httpx
 
-from mcpack.downloader import DownloadCancelledError, HashMismatchError, download_file, verify_hashes
-from mcpack.models import ContentDownload, ContentKind, DownloadableFile, Pack
+from mcpack.downloader import DownloadCancelledError, DownloadError, HashMismatchError, download_file, verify_hashes
+from mcpack.i18n import t
+from mcpack.models import ContentDownload, ContentKind, DownloadableFile, ModSourceType, Pack
 from mcpack.packs.storage import PathTraversalError, safe_join
 
 ProgressCallback = Callable[[int, int], None]
@@ -63,7 +64,7 @@ async def ensure_mods_downloaded(
         dest = cache_dir / entry.file_name
         if dest.exists():
             try:
-                verify_hashes(dest, sha1=entry.hashes.sha1, sha512=entry.hashes.sha512)
+                verify_hashes(dest, sha1=entry.hashes.sha1, sha512=entry.hashes.sha512, sha256=entry.hashes.sha256)
                 result[entry.project_id] = dest
                 if progress_cb:
                     progress_cb(i + 1, len(mods))
@@ -71,14 +72,23 @@ async def ensure_mods_downloaded(
             except HashMismatchError:
                 dest.unlink(missing_ok=True)
 
-        await download_file(
-            client,
-            entry.download_url,
-            dest,
-            sha1=entry.hashes.sha1,
-            sha512=entry.hashes.sha512,
-            cancel_event=cancel_event,
-        )
+        try:
+            await download_file(
+                client,
+                entry.download_url,
+                dest,
+                sha1=entry.hashes.sha1,
+                sha512=entry.hashes.sha512,
+                sha256=entry.hashes.sha256,
+                cancel_event=cancel_event,
+            )
+        except DownloadError as exc:
+            if isinstance(exc.__cause__, HashMismatchError) and entry.source in (ModSourceType.WURST, ModSourceType.METEOR):
+                # Meteor'un indirme adresi sabit değil: yeni build çıkınca AYNI
+                # URL farklı bir dosya döndürür. Eklenirken kaydedilen hash'le
+                # uyuşmayan bir dosya pakete sessizce GÖMÜLMEZ.
+                raise DownloadError(t("cheat.error.file_changed", name=entry.name or entry.file_name)) from exc
+            raise
         result[entry.project_id] = dest
         if progress_cb:
             progress_cb(i + 1, len(mods))

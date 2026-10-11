@@ -24,7 +24,14 @@ sadece Fabric pack'lerinde gösterir (bkz. gui/instance_page.py)."""
 
 from __future__ import annotations
 
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
 import httpx
+
+from mcpack.downloader import DownloadError, compute_hash, download_file
+from mcpack.models import ModSourceType
 
 WURST_RELEASES_API = "https://api.github.com/repos/Wurst-Imperium/Wurst-MCX2/releases"
 METEOR_DOWNLOAD_API = "https://meteorclient.com/api/download"
@@ -36,10 +43,32 @@ class CheatModUnavailableError(Exception):
     bunu doğrudan kullanıcıya gösterir."""
 
 
+@dataclass(frozen=True)
+class CheatModFile:
+    """İndirilip doğrulanmış bir hile modu dosyası — pack'e bu hash'lerle
+    kaydedilir, sonraki her indirme (export/sunucu/SKLauncher) bunlarla
+    doğrulanır."""
+
+    file_name: str
+    url: str
+    sha1: str
+    sha512: str
+    size: int
+    sha256: str | None = None
+
+
 async def find_wurst_download(client: httpx.AsyncClient, minecraft_version: str) -> tuple[str, str]:
-    """(dosya_adı, indirme_url) döner. GitHub Releases'i en yeniden eskiye
-    tarayıp bu MC versiyonu için bir .jar asset'i arar (kaynak kodu jar'ı
-    "-sources.jar" ile bitiyor, suffix eşleşmesi bunu doğal olarak eler)."""
+    """(dosya_adı, indirme_url) döner — bkz. find_wurst_asset."""
+    name, url, _sha256 = await find_wurst_asset(client, minecraft_version)
+    return name, url
+
+
+async def find_wurst_asset(client: httpx.AsyncClient, minecraft_version: str) -> tuple[str, str, str | None]:
+    """(dosya_adı, indirme_url, sha256 | None) döner. GitHub Releases'i en
+    yeniden eskiye tarayıp bu MC versiyonu için bir .jar asset'i arar
+    (kaynak kodu jar'ı "-sources.jar" ile bitiyor, suffix eşleşmesi bunu
+    doğal olarak eler). GitHub asset'leri için "digest": "sha256:…" alanı
+    yayınlar — varsa ilk indirme buna karşı doğrulanır."""
     suffix = f"-MC{minecraft_version}.jar"
     for page in range(1, 6):  # ~150 release - eski MC versiyonları için de yeterli derinlik
         try:
@@ -54,7 +83,9 @@ async def find_wurst_download(client: httpx.AsyncClient, minecraft_version: str)
             for asset in release.get("assets", []):
                 name = asset.get("name", "")
                 if name.endswith(suffix):
-                    return name, asset["browser_download_url"]
+                    digest = asset.get("digest") or ""
+                    sha256 = digest.split(":", 1)[1] if digest.startswith("sha256:") else None
+                    return name, asset["browser_download_url"], sha256
     raise CheatModUnavailableError(f"Wurst Client, Minecraft {minecraft_version} için bir build sunmuyor.")
 
 
@@ -77,3 +108,48 @@ async def find_meteor_download(client: httpx.AsyncClient, minecraft_version: str
     if "filename=" in disposition:
         file_name = disposition.split("filename=", 1)[1].strip('"; ')
     return file_name, url
+
+
+async def download_cheat_mod(
+    client: httpx.AsyncClient,
+    source: ModSourceType,
+    minecraft_version: str,
+    *,
+    cache_dir: Path | None = None,
+) -> CheatModFile:
+    """Uygun build'i bulur, İNDİRİR ve hash'lerini hesaplar.
+
+    Önceden sadece (dosya_adı, url) kaydediliyordu, hiçbir hash yoktu — her
+    export'ta ne indirildiği doğrulanmıyordu. Wurst'te GitHub'ın SHA-256'sı
+    ile ilk indirme doğrulanır; her iki modda da SHA-1/SHA-512/boyut
+    hesaplanıp pack'e kaydedilir (trust-on-first-use). cache_dir verilirse
+    dosya orada kalır (export aynı dosyayı tekrar indirmez)."""
+    sha256 = None
+    if source == ModSourceType.WURST:
+        file_name, url, sha256 = await find_wurst_asset(client, minecraft_version)
+    elif source == ModSourceType.METEOR:
+        file_name, url = await find_meteor_download(client, minecraft_version)
+    else:
+        raise ValueError(f"Hile modu kaynağı değil: {source}")
+    file_name = Path(file_name).name  # sunucudan gelen ad — yol bileşenlerini at
+
+    async def _fetch(directory: Path) -> CheatModFile:
+        dest = directory / file_name
+        try:
+            await download_file(client, url, dest, sha256=sha256)
+        except DownloadError as exc:
+            raise CheatModUnavailableError(f"{file_name} indirilemedi/doğrulanamadı: {exc}") from exc
+        return CheatModFile(
+            file_name=file_name,
+            url=url,
+            sha1=compute_hash(dest, "sha1"),
+            sha512=compute_hash(dest, "sha512"),
+            size=dest.stat().st_size,
+            sha256=sha256,
+        )
+
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return await _fetch(cache_dir)
+    with tempfile.TemporaryDirectory(prefix="mcpack-cheat-") as tmp:
+        return await _fetch(Path(tmp))

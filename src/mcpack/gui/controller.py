@@ -61,7 +61,7 @@ from mcpack.server_runtime import (
 )
 from mcpack.sources import CurseForgeClient, ModrinthClient, search_all
 from mcpack.sources.base import ModDetail, ModVersion, SearchResult
-from mcpack.sources.cheat_mods import find_meteor_download, find_wurst_download
+from mcpack.sources.cheat_mods import CheatModFile, download_cheat_mod
 
 log = get_logger(__name__)
 
@@ -450,14 +450,12 @@ class AppController(QObject):
         source = ModSourceType.WURST if kind == "wurst" else ModSourceType.METEOR
         label = "Wurst Client" if kind == "wurst" else "Meteor Client"
 
-        async def task(ctx: TaskContext) -> tuple[str, str]:
+        async def task(ctx: TaskContext) -> CheatModFile:
             async with make_client() as client:
-                if kind == "wurst":
-                    return await find_wurst_download(client, pack.minecraft)
-                return await find_meteor_download(client, pack.minecraft)
+                return await download_cheat_mod(client, source, pack.minecraft, cache_dir=self.cache_dir(pack))
 
-        def success(result: tuple[str, str]) -> None:
-            self.manager.add_cheat_mod(pack, source, *result)
+        def success(result: CheatModFile) -> None:
+            self.manager.add_cheat_mod_file(pack, source, result)
             self.pack_updated.emit(pack.id)
             self.notify.emit("success", t("ctl.item_added", title=label))
 
